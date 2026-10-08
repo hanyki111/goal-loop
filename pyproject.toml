@@ -1,0 +1,21 @@
+[project]
+name = "goal-loop-tool"
+version = "0.1.0"
+description = "Goal Loop: track what to do and what was done as Aims, Goals, Attempts, Evidence and delegated Verdicts"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Goal Loop contributors" }]
+# license: to be chosen before the first public release (docs/DISTRIBUTION-AUDIT.ko.md, section 4)
+
+[project.urls]
+Homepage = "https://github.com/hanyki111/goal-loop"
+Repository = "https://github.com/hanyki111/goal-loop"
+
+[project.scripts]
+goal-loop = "goal_loop_tool.persistent_cli:main"
+
+[tool.setuptools]
+packages = ["goal_loop_tool"]
+
+[tool.ruff]
+line-length = 100

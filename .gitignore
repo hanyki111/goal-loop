@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage/
+dist/
+build/
+*.egg-info/
+
+# Personal working records (never published; see docs/DISTRIBUTION-AUDIT.ko.md)
+.goal-loop/
+.memory/
+.claude/memory-context.md
+.claude/guidelines.md
+.claude/settings.local.json
+.claude/skills/mt-*/
+artifacts/
+*.sqlite3
+/image_*.png
+
+# Desktop app build output
+ui/node_modules/
+ui/dist/
+ui/src-tauri/target/
+ui/tsconfig.tsbuildinfo
+
+# Personal operating notes and dogfooding records of this checkout (kept locally, referenced by the journal)
+CLAUDE.local.md
+AGENTS.local.md
+docs/AO-*.ko.md
+docs/DISTRIBUTION-AUDIT.ko.md
+docs/UI-MANUAL-QA-GUIDE.ko.md
+docs/archive/

@@ -1,0 +1,1 @@
+{"productName":"Goal Loop","version":"0.1.0","identifier":"com.goalloop.tool","build":{"beforeDevCommand":"npm run dev","beforeBuildCommand":"npm run build","devUrl":"http://localhost:5174","frontendDist":"../dist"},"app":{"windows":[{"title":"Goal Loop","width":1200,"height":800}],"security":{"csp":null}},"bundle":{"active":true,"targets":"all","icon":["icons/icon.ico"]}}
