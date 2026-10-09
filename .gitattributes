@@ -1,0 +1,12 @@
+# Line endings: the repository stores LF; Windows-only scripts are checked out with CRLF.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.ico binary
+*.icns binary
+*.zip binary
+*.sqlite3 binary

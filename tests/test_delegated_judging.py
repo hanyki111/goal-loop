@@ -415,3 +415,19 @@ class JudgeProcessTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConsoleScriptTests(unittest.TestCase):
+    def test_goal_loop_judge_is_installed_next_to_goal_loop(self):
+        # pipx and other isolated installs expose console scripts only; python -m needs that environment's python.
+        import tomllib
+        project = Path(__file__).resolve().parents[1]
+        scripts = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
+        self.assertEqual(scripts["goal-loop-judge"], "goal_loop_tool.delegated_judging:main")
+
+    def test_usage_names_the_console_command_however_it_is_run(self):
+        from goal_loop_tool.delegated_judging import main as judge_main
+        output = StringIO()
+        with redirect_stdout(output), self.assertRaises(SystemExit):
+            judge_main(["--help"])
+        self.assertTrue(output.getvalue().startswith("usage: goal-loop-judge "))

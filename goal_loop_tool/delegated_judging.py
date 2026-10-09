@@ -561,7 +561,8 @@ def judge_aim(database: Path, aim_id: str, *, agent: str = "codex", note: str = 
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Run a separate agent on a project copy and record its judgment unchanged (Decision 6)")
+    # One name whether it runs as the goal-loop-judge console script or as python -m goal_loop_tool.delegated_judging.
+    parser = argparse.ArgumentParser(prog="goal-loop-judge", description="Run a separate agent on a project copy and record its judgment unchanged (Decision 6)")
     parser.add_argument("--database", type=Path, help="project journal (default: the nearest .goal-loop/journal.sqlite3)")
     parser.add_argument("--judge", choices=sorted(JUDGE_NAMES), default="codex",
                         help="judging agent: codex (codex exec), claude (a fresh Claude CLI session), glm (Claude CLI pointed at GLM via .goal-loop/judges.json)")

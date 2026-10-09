@@ -17,11 +17,15 @@ Memory Tool(지식 기록)과 AI_ORCHESTRATION(AO, 실행 계층)에 선택적�
 ### CLI 설치
 
 ```powershell
-pipx install git+https://github.com/hanyki111/goal-loop
-# 또는 가상환경 안에서
-python -m pip install git+https://github.com/hanyki111/goal-loop
+pipx install git+https://github.com/hanyki111/goal-loop     # pipx가 없으면: python -m pip install --user pipx
+# 또는 프로젝트의 가상환경 안에서
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install git+https://github.com/hanyki111/goal-loop
 goal-loop --help
 ```
+
+가상환경에 설치했다면 그 가상환경을 켜거나(`.\.venv\Scripts\Activate.ps1`) `.\.venv\Scripts\goal-loop.exe`로 부릅니다.
+아래 예시의 `goal-loop`와 `python`은 설치한 환경의 것을 뜻합니다.
 
 ### 프로젝트에서 시작하기
 
@@ -32,8 +36,10 @@ cd <프로젝트 폴더>
 goal-loop project-init .
 goal-loop where                      # source: project 이면 이 프로젝트의 기록을 씁니다
 goal-loop aim-create "이루고 싶은 변화"
+goal-loop proposal-create aim-1 "무엇을 이루면 달성인가: (1) … (2) …" --actor claude   # 목표의 달성 기준
+goal-loop proposal-close proposal-1 --kind criteria --actor claude --reason "목표의 달성 기준"
 goal-loop proposal-create aim-1 "접근 방법" --actor claude
-goal-loop goal-accept proposal-1 --target "할 일" --responsibility produce --scope "범위" --criterion "완료 기준" --verification "확인 방법" --key first-goal
+goal-loop goal-accept proposal-2 --target "할 일" --responsibility produce --scope "범위" --criterion "완료 기준" --verification "확인 방법" --key first-goal
 goal-loop attempt-start goal-1 1 claude "실행"
 goal-loop attempt-complete attempt-1 succeeded
 goal-loop evidence-record attempt-1 claude "실행하고 관찰한 것" --attach .\test.log
@@ -47,9 +53,12 @@ goal-loop guide                      # 명령 안내
 실행한 에이전트가 아닌 다른 에이전트가 프로젝트 사본에서 판정하고, 그 결과를 그대로 기록합니다.
 
 ```powershell
-python -m goal_loop_tool.delegated_judging --judge codex goal goal-1   # 또는 --judge claude
-python -m goal_loop_tool.delegated_judging aim aim-1
+goal-loop-judge --judge codex goal goal-1   # 또는 --judge claude
+goal-loop-judge aim aim-1
 ```
+
+- `goal-loop-judge`는 `goal-loop`와 함께 설치됩니다(pipx 포함). 설치한 환경의 Python으로
+  `python -m goal_loop_tool.delegated_judging …`처럼 불러도 같습니다.
 
 - `--judge codex`는 `codex exec`, `--judge claude`는 `claude -p`를 씁니다. 해당 CLI가 PATH에 있고 로그인되어 있어야 합니다.
 - 다른 모델을 Claude CLI로 연결하려면 `.goal-loop/judges.json`에 연결 정보를 둡니다(예: `{"glm": {"env_from_ps1": "<path>/set-glm.ps1"}}`).
@@ -81,6 +90,14 @@ npm run tauri build    # ui/src-tauri/target/release/bundle/ 아래에 설치 �
 - **AI_ORCHESTRATION(AO)**: 과제를 AO에 맡겨 실행하고(`goal-loop ao-attempt-start … --ao-workspace <AO 작업 공간>`, `goal-loop runtime-worker`),
   결과를 근거로 받습니다. 연결된 실행에서는 AO 내부 판정 일부가 완료를 막지 않고 참고 판정으로만 남고, 완료 판단은 Goal Loop 판정이 맡습니다.
   AO의 공개 설치 문서는 준비 중입니다.
+
+### 기여·보안·변경 기록
+
+기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 취약점 신고는 [SECURITY.md](SECURITY.md), 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
+
+### 라이선스
+
+[Apache License 2.0](LICENSE)으로 배포합니다. 저작권 표기는 [NOTICE](NOTICE)에 있습니다.
 
 ## 이 저장소 개발
 
@@ -156,7 +173,7 @@ goal-loop evidence-record attempt-1 claude "115 tests passed" --attach .\pytest.
 goal-loop ao-import attempt-1 claude <ao-workspace>\projects\<project-id> <ao-goal-id>   # AI_ORCHESTRATION Goal results as Evidence (read only)
 goal-loop ao-attempt-start goal-1 1 claude "run in AO" --ao-project-id <id> --ao-goal-id <slug> --ao-workspace <ao-workspace>   # then runtime-dispatch runs it in AO once
 goal-loop ao-links [--goal goal-1] [--ao-goal <project>/<ao-goal-id>] [--backfill --actor claude]   # Goal <-> AO Goal links
-python -m goal_loop_tool.delegated_judging goal goal-1   # a separate agent (Codex) judges on a project copy; its answer is recorded unchanged
+goal-loop-judge goal goal-1   # a separate agent (Codex) judges on a project copy; its answer is recorded unchanged
 $env:GOAL_LOOP_CEILING_DIRECTORIES = "C:\sandbox"         # project discovery never climbs above these folders (os.pathsep-separated)
 ```
 
