@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Background, Controls, ReactFlow, useNodesState, type Edge, type Node, type ReactFlowInstance } from '@xyflow/react';
+import { Background, BaseEdge, Controls, EdgeLabelRenderer, getBezierPath, Handle, MarkerType, Position, ReactFlow, useNodesState, type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance } from '@xyflow/react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import './action-scope.css';
 
@@ -312,7 +312,7 @@ export function Workspace() {
     };
     const proposalLabel = (proposal: Proposal) => isCriteria(proposal) ? '달성 기준' : ({ open: '검토 중', accepted: '과제로 확정됨', closed: '닫힘' }[proposal.status] ?? stateName(proposal.status));
     const proposalNodes: Node[] = visibleProposals.map(proposal => ({ id: proposal.id, position: saved[proposal.id] ?? { x: proposalX.get(proposal.id) ?? 0, y: aimTop(proposal.aim_id) + PROPOSAL_Y }, data: { label: <><strong>접근안 · Proposal <small className="node-id">{proposal.id}</small></strong><span>{proposalTitle(proposal.direction)}</span><em className={`state-badge proposal-${proposal.status}`}>{proposalLabel(proposal)}</em></> }, className: `graph-node proposal ${proposal.status} ${proposal.status === 'closed' || SETTLED_GOAL_PHASES.has(data.goals.find(goal => goal.id === proposal.accepted_goal_id)?.phase ?? '') ? 'settled' : ''}` }));
-    setFlowNodes([...data.nodes.filter(node => node.kind === 'aim' ? visibleAimIds.has(node.id) : visibleGoalIds.has(node.id)).map(node => ({ id: node.id, position: saved[node.id] ?? position(node), data: { label: <><strong>{node.kind === 'aim' ? '목표 · Aim' : '과제 · Goal'} <small className="node-id">{node.id}</small></strong><span>{node.label}</span><em className={`state-badge ${node.phase}`}>{stateName(node.phase)}{node.kind === 'goal' && verificationVoided(node, data) ? ' · 검증 무효' : ''}{node.dependency_blocked ? ' · 의존성 대기' : ''}{node.kind === 'goal' && node.phase === 'active' && data.attempts.filter(item => item.goal_id === node.id).at(-1)?.outcome === 'failed' ? ' · 최근 실행 실패' : ''}{node.kind === 'goal' && data.goals.find(item => item.id === node.id)?.held ? ' · 실행 보류' : ''}</em></> }, className: `graph-node ${node.kind} ${node.dependency_blocked ? 'blocked' : ''} ${node.phase === 'stopped' || node.phase === 'abandoned' ? 'settled' : ''}` })), ...proposalNodes]);
+    setFlowNodes([...data.nodes.filter(node => node.kind === 'aim' ? visibleAimIds.has(node.id) : visibleGoalIds.has(node.id)).map(node => ({ id: node.id, position: saved[node.id] ?? position(node), data: { label: <><strong>{node.kind === 'aim' ? '목표 · Aim' : '과제 · Goal'} <small className="node-id">{node.id}</small></strong><span>{node.label}</span><em className={`state-badge ${node.phase}`}>{stateName(node.phase)}{node.kind === 'goal' && verificationVoided(node, data) ? ' · 검증 무효' : ''}{node.dependency_blocked ? ' · 의존성 대기' : ''}{node.kind === 'goal' && node.phase === 'active' && data.attempts.filter(item => item.goal_id === node.id).at(-1)?.outcome === 'failed' ? ' · 최근 실행 실패' : ''}{node.kind === 'goal' && data.goals.find(item => item.id === node.id)?.held ? ' · 실행 보류' : ''}</em>{node.kind === 'goal' && <FollowNotes edges={data.edges} goalId={node.id} />}</> }, className: `graph-node ${node.kind} ${node.dependency_blocked ? 'blocked' : ''} ${node.phase === 'stopped' || node.phase === 'abandoned' ? 'settled' : ''}` })), ...proposalNodes]);
     setFlowEdges(graphEdges(data.edges, visibleProposals, visibleAimIds, visibleGoalIds, drawnGoalProposal));
     if (refit.current && flowInstance) { refit.current = false; window.setTimeout(() => { void flowInstance.fitView({ padding: 0.08, maxZoom: 1.1, minZoom: 0.2, duration: 200 }); }, 60); }
   }, [data, archivedIds, workspaceId, setFlowNodes, showProposals, graphLayout, graphFilter, positionsKey, flowInstance]);
@@ -416,7 +416,7 @@ export function Workspace() {
   const reviewCount = visibleActions.filter(action => action.kind.startsWith('resolve_')).length;
   const contextAimId = selectedAim?.id ?? activeGoal?.aim_id ?? selectedProposal?.aim_id;
   const selectedNodeId = selection?.kind === 'aim' || selection?.kind === 'goal' ? selection.id : selection?.kind === 'attempt' ? activeGoal?.id : selection?.kind === 'proposal' ? (showProposals ? selectedProposal?.id : selectedProposal?.aim_id) : undefined;
-  const displayNodes = selectedNodeId ? flowNodes.map(node => node.id === selectedNodeId ? { ...node, className: `${node.className ?? ''} is-selected` } : node) : flowNodes;
+  const { nodes: displayNodes, edges: displayEdges } = highlightFlow(flowNodes, flowEdges, data?.edges ?? [], selectedNodeId);
   const resetLayout = () => { try { localStorage.removeItem(positionsKey); } catch { /* no storage */ } void load(); };
   const beginAim = () => { setView('workspace'); setSelection(null); setComposer('aim'); };
   const selectRecord = (value: Selection) => { setComposer(null); setSelection(value); };
@@ -430,7 +430,7 @@ export function Workspace() {
     {view === 'workspace' && <div className="workspace-grid" style={{ '--left-pane': `${paneWidths.left}px`, '--right-pane': `${paneWidths.right}px` } as React.CSSProperties}>
       <AimNavigator aims={visibleData.aims} goals={visibleData.goals} selected={contextAimId ? { kind: 'aim', id: contextAimId } : null} onSelect={selectRecord} onCreate={beginAim} hidden={[...data.aims.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `목표 · ${item.description}` })), ...data.proposals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `접근안 · ${proposalTitle(item.direction)}` })), ...data.goals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `과제 · ${item.target}` }))]} onRestore={restore} />
       <PaneSplitter side="left" value={paneWidths.left} onChange={left => setPaneWidths(current => ({ ...current, left }))} />
-      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 오른쪽에 상세가 열립니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} /><span>{legendLine('aim')}목표 연결</span>{showProposals && graphLayout === 'columns' && <span>{legendLine('accepted')}과제로 확정</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={flowEdges} nodesConnectable={false} onInit={setFlowInstance} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1.1, minZoom: 0.7 }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
+      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 오른쪽에 상세가 열립니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} /><span>{legendLine('aim')}목표 연결</span>{showProposals && graphLayout === 'columns' && <span>{legendLine('accepted')}과제로 확정</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={displayEdges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} nodesConnectable={false} onInit={setFlowInstance} fitView fitViewOptions={{ padding: 0.08, maxZoom: 1.1, minZoom: 0.7 }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
       <PaneSplitter side="right" value={paneWidths.right} onChange={right => setPaneWidths(current => ({ ...current, right }))} />
       <aside className="inspector">{error && <ErrorNotice raw={error} onClose={() => setError('')} />}<Inspector ao={aoStatus} onCreateAim={beginAim} onRetry={retryNow} hiddenIds={archivedIds} onRestore={restore} aim={selectedAim} proposal={selectedProposal} goal={activeGoal} attempt={selectedAttempt} data={data} activity={activity} admission={admission} busy={busy} onSelect={selectRecord} submit={submit} run={run} onArchive={archive} focus={selection?.focus} actions={scopedActions} allActions={visibleActions} onOpenInbox={() => setView('inbox')} composer={composer} onCancelComposer={() => setComposer(null)} /></aside>
     </div>}
@@ -501,16 +501,67 @@ export const EDGE_COLORS = { aim: '#a78bfa', proposal: '#a78bfa', accepted: '#10
 const edgeColor = (kind: string) => (EDGE_COLORS as Record<string, string>)[kind] ?? '#94a3b8';
 const legendLine = (kind: keyof typeof EDGE_COLORS) => <i className={`legend-line ${kind}`} style={{ borderTopColor: EDGE_COLORS[kind] }} />;
 
+// Every graph card has top/bottom handles for the Aim → Proposal → Goal structure and side handles for follow links.
+// Registered as 'default' so React Flow keeps its default node styling.
+function GraphCard({ data }: NodeProps) {
+  return <><Handle type="target" position={Position.Top} id="in" /><Handle type="target" position={Position.Left} id="follow-in" />{(data as { label: React.ReactNode }).label}<Handle type="source" position={Position.Bottom} id="out" /><Handle type="source" position={Position.Right} id="follow-out" /></>;
+}
+const NODE_TYPES = { default: GraphCard };
+
+// A follow link draws its reason as a small note above the line while its flow is highlighted; neighbouring cards
+// sit close together, so a label on the line itself would be hidden under them.
+function FollowEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data }: EdgeProps) {
+  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const { reason, showReason } = (data ?? {}) as { reason?: string; showReason?: boolean };
+  return <><BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />{showReason && reason && <EdgeLabelRenderer><div className="follow-reason nodrag nopan" style={{ transform: `translate(-50%, calc(-100% - 64px)) translate(${labelX}px, ${Math.min(sourceY, targetY)}px)` }}>{reason}</div></EdgeLabelRenderer>}</>;
+}
+const EDGE_TYPES = { follows: FollowEdge };
+
+// The tasks connected to goalId through follow links, earliest first (a task appears after every task it follows).
+export function followFlow(edges: Projection['edges'], goalId: string): string[] {
+  const follows = edges.filter(edge => edge.kind === 'follows');
+  const members = new Set([goalId]); let grew = true;
+  while (grew) { grew = false; for (const edge of follows) if (members.has(edge.source) !== members.has(edge.target)) { members.add(edge.source); members.add(edge.target); grew = true; } }
+  if (members.size === 1) return [goalId];
+  const order: string[] = []; const placed = new Set<string>(); const pending = [...members].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  while (pending.length) {
+    const index = pending.findIndex(id => follows.every(edge => edge.target !== id || !members.has(edge.source) || placed.has(edge.source)));
+    const [next] = pending.splice(index < 0 ? 0 : index, 1); order.push(next); placed.add(next);
+  }
+  return order;
+}
+
+// Selecting a task that follows or is followed by others highlights its whole flow, shows the follow reasons, and dims the rest.
+export function highlightFlow(nodes: Node[], edges: Edge[], recorded: Projection['edges'], selectedNodeId?: string): { nodes: Node[]; edges: Edge[] } {
+  const flow = selectedNodeId ? followFlow(recorded, selectedNodeId) : [];
+  const inFlow = new Set(flow.length > 1 ? flow : []);
+  const shownNodes = nodes.map(node => { const classes = [node.className ?? '', node.id === selectedNodeId ? 'is-selected' : '', inFlow.size ? (inFlow.has(node.id) ? 'in-flow' : 'dimmed') : ''].filter(Boolean).join(' '); return classes === (node.className ?? '') ? node : { ...node, className: classes }; });
+  if (!inFlow.size) return { nodes: shownNodes, edges };
+  return { nodes: shownNodes, edges: edges.map(edge => edge.type === 'follows' && inFlow.has(edge.source) && inFlow.has(edge.target)
+    ? { ...edge, className: `${edge.className ?? ''} in-flow`, data: { ...edge.data, showReason: true }, zIndex: 10 }
+    : { ...edge, className: `${edge.className ?? ''} dimmed` }) };
+}
+
+export function FollowNotes({ edges, goalId }: { edges: Projection['edges']; goalId: string }) {
+  const from = edges.filter(edge => edge.kind === 'follows' && edge.target === goalId).map(edge => edge.source);
+  const to = edges.filter(edge => edge.kind === 'follows' && edge.source === goalId).map(edge => edge.target);
+  if (!from.length && !to.length) return null;
+  return <small className="follow-note">{from.length > 0 && <b>← {from.join(', ')}에서 이어받음</b>}{to.length > 0 && <b>→ {to.join(', ')}(으)로 이어짐</b>}</small>;
+}
+
 // The edges the graph draws: an Aim's direct line to a Goal gives way to Aim → Proposal → Goal when that
 // Proposal is drawn. Each edge carries its colour from EDGE_COLORS.
 export function graphEdges(edges: Projection['edges'], proposals: Proposal[], aimIds: Set<string>, goalIds: Set<string>, drawnGoalProposal: Set<string>) {
   const shown = (id: string) => aimIds.has(id) || goalIds.has(id);
   const recorded = edges.filter(edge => !(edge.kind === 'aim' && drawnGoalProposal.has(edge.target)) && shown(edge.source) && shown(edge.target))
-    .map(edge => ({ ...edge, animated: edge.kind === 'dependency', className: `edge-${edge.kind}`, style: { stroke: edgeColor(edge.kind) }, ...(edge.reason ? { ariaLabel: `이어받음: ${edge.reason}` } : {}) }));
+    .map(edge => edge.kind === 'follows'
+      // A follow link runs side to side (earlier task's right → later task's left) with an arrow, apart from the top/bottom structure lines.
+      ? { ...edge, type: 'follows', animated: false, className: 'edge-follows', sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLORS.follows, width: 18, height: 18 }, style: { stroke: EDGE_COLORS.follows, strokeWidth: 3 }, data: { reason: edge.reason }, ariaLabel: `이어받음: ${edge.reason ?? ''}` }
+      : { ...edge, animated: edge.kind === 'dependency', className: `edge-${edge.kind}`, sourceHandle: 'out', targetHandle: 'in', style: { stroke: edgeColor(edge.kind) } });
   const viaProposals = proposals.flatMap(proposal => [
-    { id: `proposal:${proposal.aim_id}:${proposal.id}`, source: proposal.aim_id, target: proposal.id, className: 'edge-proposal', style: { stroke: EDGE_COLORS.proposal } },
+    { id: `proposal:${proposal.aim_id}:${proposal.id}`, source: proposal.aim_id, target: proposal.id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-proposal', style: { stroke: EDGE_COLORS.proposal } },
     ...(proposal.accepted_goal_id && goalIds.has(proposal.accepted_goal_id)
-      ? [{ id: `accepted:${proposal.id}:${proposal.accepted_goal_id}`, source: proposal.id, target: proposal.accepted_goal_id, className: 'edge-accepted', style: { stroke: EDGE_COLORS.accepted } }] : []),
+      ? [{ id: `accepted:${proposal.id}:${proposal.accepted_goal_id}`, source: proposal.id, target: proposal.accepted_goal_id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-accepted', style: { stroke: EDGE_COLORS.accepted } }] : []),
   ]);
   return [...recorded, ...viaProposals];
 }
@@ -632,6 +683,7 @@ export function GoalInspector({ ao = [], goal, attempt, focus, data, activity, a
   const followedBy = data.edges.filter(edge => edge.kind === 'follows' && edge.source === goal.id);
   const followCandidates = data.goals.filter(item => item.id !== goal.id && !followsFrom.some(edge => edge.source === item.id) && !followedBy.some(edge => edge.target === item.id));
   const followAimIds = [...new Set(followCandidates.map(item => item.aim_id))].sort((a, b) => (a === goal.aim_id ? -1 : b === goal.aim_id ? 1 : 0));
+  const goalFlow = followFlow(data.edges, goal.id);
   const relationCount = (parentEdge ? 1 : 0) + children.length + requires.length + requiredBy.length + followsFrom.length + followedBy.length;
   const dependencyBlocked = Boolean(data.nodes.find(node => node.id === goal.id)?.dependency_blocked);
   const activityIds = new Set([goal.id, ...attempts.map(item => item.id), ...evidence.map(item => item.id), ...verdicts.map(item => item.id)]);
@@ -656,7 +708,8 @@ export function GoalInspector({ ao = [], goal, attempt, focus, data, activity, a
       <AoRunSection goal={goal} data={data} ao={ao} onSelect={onSelect} />
       <MemorySection data={data} ids={[goal.id, ...data.attempts.filter(item => item.goal_id === goal.id).map(item => item.id), ...data.evidence.filter(item => item.goal_id === goal.id).map(item => item.id), ...data.verdicts.filter(item => item.goal_id === goal.id).map(item => item.id), ...(data.decisions ?? []).filter(item => item.goal_id === goal.id).map(item => item.id)]} />
       <ReferenceSection subjectId={goal.id} references={goal.references ?? []} projectRoot={data.project_root ?? null} busy={busy} submit={submit} documents={data.memory_documents} />
-      <details className="goal-section"><summary>다른 과제와의 연결 <small>{relationCount ? `${relationCount}개` : '없음'}</small></summary>
+      <details className="goal-section" open={relationCount > 0}><summary>다른 과제와의 연결 <small>{relationCount ? `${relationCount}개` : '없음'}</small></summary>
+        {goalFlow.length > 1 && <p className="follow-chain" aria-label="이어받음 흐름">{goalFlow.map((id, index) => <span key={id}>{index > 0 && <i aria-hidden="true"> → </i>}{id === goal.id ? <strong>{id}</strong> : <button type="button" className="relation-link" title={goalById(id)?.target} onClick={() => onSelect({ kind: 'goal', id })}>{id}</button>}</span>)}</p>}
         {relationCount > 0 && <ul className="relation-list">{parentEdge && relationRow(parentEdge.source, '상위 과제')}{children.map(edge => relationRow(edge.target, '하위 과제'))}{requires.map(edge => relationRow(edge.source, '선행 과제'))}{requiredBy.map(edge => relationRow(edge.target, '이 과제를 기다림'))}{followsFrom.map(edge => relationRow(edge.source, '이어받은 과제', edge.reason))}{followedBy.map(edge => relationRow(edge.target, '이 과제를 이어받음', edge.reason))}</ul>}
         {closed ? <p className="tab-hint">끝난 과제에는 이어받은 과제만 연결할 수 있습니다.</p> : <p className="tab-hint">선행 과제를 연결하면, 그 과제가 검증을 통과해야 이 과제를 실행할 수 있습니다. 상위 과제는 같은 목표 안에서 하나만 정할 수 있습니다. 이어받은 과제는 실행을 막지 않고 흐름만 기록합니다.</p>}
         {!closed && !parentEdge && parentCandidates.length > 0 && <form key={`parent-${relationCount}`} onSubmit={submit('goal-parent-add', form => [goal.id, input(form, 'other')])}><label className="field"><span>상위 과제 정하기</span><select name="other" required defaultValue=""><option value="" disabled>같은 목표의 과제 선택…</option>{parentCandidates.map(item => <option value={item.id} key={item.id}>{item.target}</option>)}</select></label><button disabled={busy}>상위 과제 연결</button></form>}

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { actionTitle, friendlyError, AttachmentList, ReferenceSection, AimInspector, AimNavigator, AttemptTimeline, GoalInspector, NextActionSummary, ProposalInspector, RuntimeScreen, scopedNextActions, verdictRelations } from './Workspace';
+import { actionTitle, friendlyError, AttachmentList, ReferenceSection, AimInspector, AimNavigator, AttemptTimeline, FollowNotes, GoalInspector, NextActionSummary, ProposalInspector, RuntimeScreen, scopedNextActions, verdictRelations } from './Workspace';
 
 describe('Goal Loop workspace components', () => {
   afterEach(cleanup);
@@ -248,6 +248,12 @@ describe('Goal Loop workspace components', () => {
     fireEvent.change(form.querySelector('textarea[name="reason"]')!, { target: { value: '앞 결과를 근거로 시작' } });
     fireEvent.submit(form);
     expect(calls).toEqual([['goal-follow-add', ['goal-2', 'goal-4', '--actor', 'claude', '--reason', '앞 결과를 근거로 시작']]]);
+    // Relations are open when there are any, and the whole follow flow is summarised with the current task marked.
+    expect(view.container.querySelector('details.goal-section[open] .follow-chain')?.textContent).toBe('goal-1 → goal-2 → goal-3');
+    expect(view.container.querySelector('.follow-chain strong')?.textContent).toBe('goal-2');
+    const notes = render(<FollowNotes edges={data.edges as never} goalId="goal-2" />);
+    expect(notes.container.textContent).toBe('← goal-1에서 이어받음→ goal-3(으)로 이어짐');
+    expect(render(<FollowNotes edges={data.edges as never} goalId="goal-4" />).container.textContent).toBe('');
   });
 
   it('lists hidden items at the bottom of the navigator with a restore action', () => {

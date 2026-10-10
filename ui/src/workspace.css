@@ -444,8 +444,7 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .legend-line.aim-parent{border-top:3px solid #475569}
 .legend-line.parent{border-top-color:#3b82f6}
 .legend-line.dependency{border-top:2px dashed #f59e0b}
-.legend-line.follows{border-top:2px dotted #14b8a6}
-.react-flow__edge.edge-follows path{stroke-width:2;stroke-dasharray:2 4}
+.legend-line.follows{border-top:3px solid #14b8a6}
 .relation-list li{flex-wrap:wrap}
 .relation-list .relation-reason{flex-basis:100%;color:#64748b;font-size:calc(11px * var(--ui-scale))}
 .layout-choice select{width:auto;padding:1px 4px;font-size:inherit;margin-left:4px}
@@ -463,3 +462,16 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .refresh-indicator .spinner{width:12px;height:12px;border:2px solid #c7d2fe;border-top-color:#4f46e5;border-radius:50%;animation:refresh-spin .8s linear infinite}
 @keyframes refresh-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.refresh-indicator .spinner{animation-duration:2.4s}}
+
+.graph-node .follow-note{display:grid;gap:2px;margin-top:6px;font-size:10px;color:#0f766e}
+.graph-node .follow-note b{font-weight:650}
+.graph-node.dimmed{opacity:.28}
+.graph-node.in-flow:not(.is-selected){border-color:#14b8a6!important;box-shadow:0 0 0 2px #99f6e4!important}
+.react-flow__edge.dimmed{opacity:.2}
+.react-flow__edge.edge-follows.in-flow path{stroke-width:4}
+.follow-reason{position:absolute;z-index:1001;max-width:220px;padding:4px 8px;border:1px solid #5eead4;border-radius:6px;background:#f0fdfa;color:#0f766e;font-size:11px;line-height:1.35;box-shadow:0 2px 6px #0f766e26;pointer-events:none}
+.follow-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px;margin:0 0 calc(8px * var(--ui-scale));font-size:calc(12px * var(--ui-scale));color:#0f766e}
+.follow-chain i{font-style:normal;color:#64748b}
+.follow-chain span{display:inline-flex;align-items:baseline;white-space:nowrap}
+.follow-chain .relation-link{display:inline;margin:0;padding:0 2px}
+.react-flow__edgelabel-renderer{z-index:1001}

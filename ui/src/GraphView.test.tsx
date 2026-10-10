@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_COLORS, graphEdges, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
+import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
 
 const goal = (id: string, aim: string, phase: string) => ({ id, aim_id: aim, phase, target: `과제 ${id}`, responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} });
 const data = {
@@ -123,5 +123,40 @@ describe('connection colours', () => {
       .toEqual([EDGE_COLORS.proposal, EDGE_COLORS.accepted, EDGE_COLORS.parent, EDGE_COLORS.dependency, EDGE_COLORS['aim-parent'], EDGE_COLORS.follows]);
     expect(drawn.find(edge => edge.className === 'edge-follows')).toMatchObject({ animated: false });
     expect(graphEdges(typed.edges, [], new Set(['aim-1']), new Set(['goal-1']), new Set())[0].style.stroke).toBe(EDGE_COLORS.aim);
+  });
+
+  it('draws follow links side to side with an arrow and highlights the selected task flow with its reasons', () => {
+    const recorded = [
+      { id: 'aim:aim-1:goal-1', source: 'aim-1', target: 'goal-1', kind: 'aim' },
+      { id: 'follows:goal-1:goal-2', source: 'goal-1', target: 'goal-2', kind: 'follows', reason: '조사 결론에서 시작' },
+      { id: 'follows:goal-2:goal-3', source: 'goal-2', target: 'goal-3', kind: 'follows', reason: '중단된 과제를 이어받음' },
+      { id: 'dependency:goal-4:goal-5', source: 'goal-4', target: 'goal-5', kind: 'dependency' },
+    ];
+    const drawn = graphEdges(recorded, [], new Set(['aim-1']), new Set(['goal-1', 'goal-2', 'goal-3', 'goal-4', 'goal-5']), new Set());
+    const follow = drawn.find(edge => edge.id === 'follows:goal-1:goal-2')!;
+    expect(follow).toMatchObject({ type: 'follows', sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { type: 'arrowclosed', color: EDGE_COLORS.follows }, data: { reason: '조사 결론에서 시작' } });
+    expect((follow.style as { strokeWidth?: number }).strokeWidth).toBeGreaterThan(2);
+    // Structure lines keep the top/bottom handles, so a follow link never shares a handle with an accepted line.
+    expect(drawn.filter(edge => edge.id !== follow.id && !edge.id.startsWith('follows:')).every(edge => edge.sourceHandle === 'out' && edge.targetHandle === 'in')).toBe(true);
+
+    expect(followFlow(recorded, 'goal-3')).toEqual(['goal-1', 'goal-2', 'goal-3']);
+    expect(followFlow([...recorded, { id: 'f', source: 'goal-1', target: 'goal-9', kind: 'follows' }], 'goal-2')).toEqual(['goal-1', 'goal-2', 'goal-3', 'goal-9']);
+    expect(followFlow(recorded, 'goal-4')).toEqual(['goal-4']);
+
+    const nodes = ['aim-1', 'proposal-1', 'goal-1', 'goal-2', 'goal-3', 'goal-4'].map(id => ({ id, position: { x: 0, y: 0 }, data: {}, className: 'graph-node' }));
+    const selected = highlightFlow(nodes, drawn, recorded, 'goal-2');
+    const classOf = (id: string) => selected.nodes.find(node => node.id === id)!.className;
+    expect(classOf('goal-2')).toContain('is-selected');
+    expect([classOf('goal-1'), classOf('goal-3')].every(name => name?.includes('in-flow'))).toBe(true);
+    expect(['aim-1', 'proposal-1', 'goal-4'].every(id => classOf(id)?.includes('dimmed'))).toBe(true);
+    const highlighted = selected.edges.filter(edge => edge.className?.includes('in-flow'));
+    expect(highlighted.map(edge => edge.id).sort()).toEqual(['follows:goal-1:goal-2', 'follows:goal-2:goal-3']);
+    expect(highlighted.every(edge => (edge.data as { showReason?: boolean }).showReason)).toBe(true);
+    expect(selected.edges.filter(edge => !edge.className?.includes('in-flow')).every(edge => edge.className?.includes('dimmed'))).toBe(true);
+    // Without a flow (or after clearing the selection) nothing is dimmed and no reason is shown.
+    for (const result of [highlightFlow(nodes, drawn, recorded, 'goal-4'), highlightFlow(nodes, drawn, recorded, undefined)]) {
+      expect(result.nodes.some(node => node.className?.includes('dimmed'))).toBe(false);
+      expect(result.edges).toBe(drawn);
+    }
   });
 });
