@@ -91,6 +91,8 @@ npm run tauri build    # ui/src-tauri/target/release/bundle/ 아래에 설치 �
   결과를 근거로 받습니다. 연결된 실행에서는 AO 내부 판정 일부가 완료를 막지 않고 참고 판정으로만 남고, 완료 판단은 Goal Loop 판정이 맡습니다.
   AO의 공개 설치 문서는 준비 중입니다.
 
+세 도구를 함께 쓰는 순서는 [docs/GUIDE-THREE-TOOLS.ko.md](docs/GUIDE-THREE-TOOLS.ko.md)에 있습니다.
+
 ### 기여·보안·변경 기록
 
 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 취약점 신고는 [SECURITY.md](SECURITY.md), 버전별 변경은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
