@@ -523,6 +523,13 @@ class PersistentGoalLoop:
             return None, JournalEvent(self._event_id(), "GoalDependencyLinked", "system", "goal", dependent_goal_id, payload)
         return self._execute(command_id, "add_goal_dependency", {"dependent_goal_id": dependent_goal_id, "required_goal_id": required_goal_id}, invoke)
 
+    def add_goal_follow(self, goal_id, previous_goal_id, actor_id, reason, *, command_id=None) -> None:
+        def invoke(loop):
+            loop.add_goal_follow(goal_id, previous_goal_id, actor_id, reason)
+            payload = {"goal_id": goal_id, "previous_goal_id": previous_goal_id, "actor_id": actor_id, "reason": reason}
+            return None, JournalEvent(self._event_id(), "GoalFollowLinked", actor_id, "goal", goal_id, payload)
+        return self._execute(command_id, "add_goal_follow", {"goal_id": goal_id, "previous_goal_id": previous_goal_id}, invoke)
+
     def correct_evidence(self, evidence_id, actor_id, observation, *, command_id=None) -> EvidenceCorrection:
         def invoke(loop):
             correction = loop.correct_evidence(evidence_id, actor_id, observation)
@@ -628,6 +635,7 @@ class PersistentGoalLoop:
             # Rules added later never reject facts already in the journal.
             elif event.event_type == "GoalParentLinked": loop.add_goal_parent(p["child_goal_id"], p["parent_goal_id"], allow_legacy_deadlock=True)
             elif event.event_type == "GoalDependencyLinked": loop.add_goal_dependency(p["dependent_goal_id"], p["required_goal_id"], allow_legacy_deadlock=True)
+            elif event.event_type == "GoalFollowLinked": loop.add_goal_follow(p["goal_id"], p["previous_goal_id"], p["actor_id"], p["reason"])
             elif event.event_type == "EvidenceCorrected": loop.correct_evidence(p["evidence_id"], p["actor_id"], p["observation"])
             elif event.event_type == "VerdictReviewOpened": loop.review_verdict_after_correction(p["verdict_id"], p["correction_id"])
             elif event.event_type == "VerdictInvalidated": loop.invalidate_verdict(p["verdict_id"])

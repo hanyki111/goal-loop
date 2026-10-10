@@ -223,6 +223,33 @@ describe('Goal Loop workspace components', () => {
     expect(options).not.toContain('선행');
   });
 
+  it('shows follow links with their reason and lets a finished task record one across Aims', () => {
+    const base = { responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} };
+    const goals = [{ ...base, id: 'goal-1', aim_id: 'aim-1', phase: 'verified', target: '시장 조사' }, { ...base, id: 'goal-2', aim_id: 'aim-1', phase: 'stopped', target: '규칙 추출' },
+      { ...base, id: 'goal-3', aim_id: 'aim-2', phase: 'committed', target: 'LLM 추출' }, { ...base, id: 'goal-4', aim_id: 'aim-2', phase: 'committed', target: '수요 검증' }];
+    const data = { aims: [{ id: 'aim-1', description: '목표', phase: 'open', paused: false, currently_achieved: false }, { id: 'aim-2', description: '공고 해석 서비스', phase: 'open', paused: false, currently_achieved: false, parent_aim_id: 'aim-1' }],
+      proposals: [], goals, attempts: [], verdicts: [], evidence: [], aim_evaluations: [], schema_version: 16, nodes: [],
+      edges: [{ id: 'follows:goal-1:goal-2', source: 'goal-1', target: 'goal-2', kind: 'follows', actor_id: 'claude', reason: '조사 결론 C2에서 시작' },
+        { id: 'follows:goal-2:goal-3', source: 'goal-2', target: 'goal-3', kind: 'follows', actor_id: 'claude', reason: '규칙 추출이 일반화에 실패해 이어받음' }] };
+    const calls: Array<[string, string[]]> = [];
+    const submit = (command: string, build: (form: HTMLFormElement) => string[]) => (event: { preventDefault: () => void; currentTarget: HTMLFormElement }) => { event.preventDefault(); calls.push([command, build(event.currentTarget)]); };
+    const view = render(<GoalInspector goal={goals[1]} data={data as never} activity={[]} admission={{}} busy={false} onSelect={vi.fn()} submit={submit as never} run={async () => undefined} onArchive={vi.fn()} actions={[]} />);
+    const rows = Array.from(view.container.querySelectorAll('.relation-list li')).map(item => item.textContent);
+    expect(rows.some(row => row?.includes('이어받은 과제') && row.includes('시장 조사') && row.includes('조사 결론 C2에서 시작'))).toBe(true);
+    expect(rows.some(row => row?.includes('이 과제를 이어받음') && row.includes('LLM 추출') && row.includes('일반화에 실패'))).toBe(true);
+    // A stopped task offers no parent or prerequisite form, only the follow link, and already linked tasks are not offered again.
+    expect(view.container.querySelector('select[name="other"]')).toBeNull();
+    const options = Array.from(view.container.querySelectorAll('select[name="previous"] option')).map(option => option.textContent);
+    expect(options).toEqual(['과제 선택…', '수요 검증']);
+    expect(view.container.querySelector('select[name="previous"] optgroup')?.getAttribute('label')).toBe('다른 목표 · 공고 해석 서비스');
+    const form = view.container.querySelector('select[name="previous"]')!.closest('form')!;
+    fireEvent.change(form.querySelector('select[name="previous"]')!, { target: { value: 'goal-4' } });
+    fireEvent.change(form.querySelector('input[name="actor"]')!, { target: { value: 'claude' } });
+    fireEvent.change(form.querySelector('textarea[name="reason"]')!, { target: { value: '앞 결과를 근거로 시작' } });
+    fireEvent.submit(form);
+    expect(calls).toEqual([['goal-follow-add', ['goal-2', 'goal-4', '--actor', 'claude', '--reason', '앞 결과를 근거로 시작']]]);
+  });
+
   it('lists hidden items at the bottom of the navigator with a restore action', () => {
     const onRestore = vi.fn();
     render(<AimNavigator aims={[]} goals={[]} selected={null} onSelect={vi.fn()} hidden={[{ id: 'goal-9', label: '과제 · 숨긴 과제' }]} onRestore={onRestore} />);

@@ -249,7 +249,11 @@ _COMMAND_HELP = {
     ),
     "goal-parent-add": ("같은 Aim 안에서 child Goal의 immutable parent를 연결합니다.", "goal-parent-add goal-2 goal-1"),
     "goal-dependency-add": ("target Goal이 source Goal의 valid satisfied Verdict 뒤에만 실행되게 연결합니다.", "goal-dependency-add goal-2 goal-1"),
-    "goal-graph": ("Goal parent-child와 Goal dependency 관계를 읽기 전용 JSON으로 봅니다.", "goal-graph"),
+    "goal-follow-add": (
+        "한 Goal이 앞선 Goal의 결과를 근거로 시작했거나 중단된 Goal을 다른 방식으로 이어받았음을 사유와 함께 기록합니다. 목표가 달라도, 앞 Goal이 중단·검증 완료여도 연결할 수 있고, 실행을 막지 않습니다.",
+        "goal-follow-add goal-3 goal-2 --actor claude --reason \"규칙 기반 추출(goal-2)이 일반화에 실패해 LLM 추출로 이어받음\"",
+    ),
+    "goal-graph": ("Goal parent-child, Goal dependency, 이어받음(follows) 관계를 읽기 전용 JSON으로 봅니다.", "goal-graph"),
     "graph-export": ("Goal graph projection을 서버 없이 열 수 있는 로컬 HTML 파일로 export합니다.", "graph-export .\\goal-graph.html"),
     "guide": (
         "AI 없이 CLI만으로 Aim부터 review/recovery까지 진행하는 단계별 한국어 안내를 봅니다.",
@@ -376,6 +380,10 @@ def _show_guide(database: Path, output: Callable[[str], None] = print) -> None:
         "", "1. 계획 만들기: Aim은 원하는 변화, Proposal은 첫 실행 방향입니다.",
         f"   {command} aim-create \"처음 사용자가 끝까지 CLI를 쓸 수 있게 한다\"",
         f"   {command} proposal-create aim-1 \"사용 흐름을 관찰하고 안내를 개선한다\"",
+        "   같은 방향의 접근안이 두 번째로 나오면, 그 방향을 하위 목표(aim-create --parent)로 먼저 만들고 이후 접근안과 과제를 그 아래에 둡니다.",
+        "   이미 만든 접근안과 과제는 다른 목표로 옮길 수 없습니다.",
+        "   한 과제가 앞 과제의 결과를 근거로 시작했거나 중단된 과제를 다른 방식으로 이어가면, 이어받음 연결을 남깁니다(실행을 막지 않음).",
+        f"   {command} goal-follow-add goal-3 goal-2 --actor claude --reason \"규칙 기반 추출이 일반화에 실패해 LLM 추출로 이어받음\"",
         "", "2. 약속 확정: Goal Contract에는 결과 목표·범위·성공 기준·검증 방법을 각각 적습니다.",
         f"   {command} goal-accept proposal-1 --target \"사용 가능한 안내\" --responsibility produce --scope \"CLI와 문서\" --criterion \"처음 사용자도 완료\" --verification \"사용자가 로그 확인\" --key first-guide",
         "", "3. 실행과 검증: succeeded는 실행 결과일 뿐 Goal 성공이 아닙니다.",
@@ -1410,7 +1418,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("next", help="Return structured, read-only next actions for an agent or script")
     sub.add_parser("reviews", help="Return read-only under-review Verdicts, Aim Evaluations, and Impact Reviews")
     sub.add_parser("admission", help="Return read-only execution-admission facts and dependency states")
-    sub.add_parser("goal-graph", help="Return read-only parent-child and Goal dependency graph links")
+    sub.add_parser("goal-graph", help="Return read-only parent-child, Goal dependency, and follow graph links")
     sub.add_parser("ui-projection", help="Return versioned read-only graph data for React, Tauri, or Obsidian shells")
     memory_draft = sub.add_parser("memory-draft", help="Suggest Memory Tool timeline lines for Verdicts and Aim Evaluations the timeline does not cite yet (read-only)")
     memory_draft.add_argument("--record", help="only the draft for this verdict-* or aim-evaluation-* ID")
@@ -1562,6 +1570,9 @@ def main(argv: list[str] | None = None) -> None:
     parent_link.add_argument("child_goal_id"); parent_link.add_argument("parent_goal_id")
     goal_dependency = sub.add_parser("goal-dependency-add", help="Require a source Goal valid satisfied Verdict before target Attempt start")
     goal_dependency.add_argument("dependent_goal_id"); goal_dependency.add_argument("required_goal_id")
+    follow_link = sub.add_parser("goal-follow-add", help="Record that a Goal builds on or continues an earlier Goal (never blocks Attempts)")
+    follow_link.add_argument("goal_id"); follow_link.add_argument("previous_goal_id")
+    follow_link.add_argument("--actor", required=True); follow_link.add_argument("--reason", required=True)
     codex_run = sub.add_parser("codex-run", help="Explicitly run Codex for an existing running Attempt")
     codex_run.add_argument("attempt_id"); codex_run.add_argument("prompt")
     codex_run.add_argument("--workdir", type=Path, required=True)
@@ -1639,7 +1650,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "next": _emit({"database": str(args.database), "actions": _next_action_records(loop, args.database)}); return
     if args.command == "reviews": _emit({"database": str(args.database), **_review_records(loop)}); return
     if args.command == "admission": _emit({"database": str(args.database), "enforce_authority": args.enforce_authority, **_admission_records(loop)}); return
-    if args.command == "goal-graph": _emit({"database": str(args.database), "parents": loop.goal_parents, "dependencies": {goal_id: [item.required_goal_id for item in records] for goal_id, records in loop.goal_dependencies.items()}}); return
+    if args.command == "goal-graph": _emit({"database": str(args.database), "parents": loop.goal_parents, "dependencies": {goal_id: [item.required_goal_id for item in records] for goal_id, records in loop.goal_dependencies.items()}, "follows": [{"goal_id": item.goal_id, "previous_goal_id": item.previous_goal_id, "actor_id": item.actor_id, "reason": item.reason} for item in loop.goal_follows]}); return
     if args.command == "memory-draft":
         projection = goal_graph_projection(loop, project_root=project_root_for(args.database), artifacts_dir=None)
         found = [item for item in projection["memory_drafts"] if not args.record or item["record_id"] == args.record]
@@ -1879,6 +1890,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "verdict-dependency-add": loop.add_verdict_dependency(args.goal_id, args.verdict_id, VerdictResult(args.required_result)); _emit({"action": "verdict_dependency_added", "goal_id": args.goal_id, "verdict_id": args.verdict_id, "required_result": args.required_result}); return
     if args.command == "goal-parent-add": loop.add_goal_parent(args.child_goal_id, args.parent_goal_id); _emit({"action": "goal_parent_linked", "child_goal_id": args.child_goal_id, "parent_goal_id": args.parent_goal_id}); return
     if args.command == "goal-dependency-add": loop.add_goal_dependency(args.dependent_goal_id, args.required_goal_id); _emit({"action": "goal_dependency_linked", "dependent_goal_id": args.dependent_goal_id, "required_goal_id": args.required_goal_id}); return
+    if args.command == "goal-follow-add": loop.add_goal_follow(args.goal_id, args.previous_goal_id, args.actor, args.reason); _emit({"action": "goal_follow_linked", "goal_id": args.goal_id, "previous_goal_id": args.previous_goal_id, "actor_id": args.actor, "reason": args.reason}); return
     if args.command == "codex-run":
         if not args.workdir.is_dir():
             parser.error(f"--workdir must be an existing directory: {args.workdir}")

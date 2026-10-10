@@ -71,7 +71,7 @@ class MemoryViewTests(unittest.TestCase):
 
     def test_without_memory_folder_the_projection_has_nothing_and_no_error(self):
         projection = run("ui-projection")
-        self.assertEqual(projection["schema_version"], 15)
+        self.assertEqual(projection["schema_version"], 16)
         self.assertEqual((projection["memory_mentions"], projection["memory_documents"]), ([], {}))
 
     def test_timeline_entries_cite_whole_record_ids_newest_first(self):

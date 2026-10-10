@@ -29,7 +29,7 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
                  "status": attachment_status(artifacts_dir, item.name, item.sha256)} for item in evidence.attachments]
 
     projection = {
-        "schema_version": 15,
+        "schema_version": 16,
         # v15: memory_drafts, timeline lines to suggest for Verdicts and Aim Evaluations the timeline does not cite yet.
         # v14: Memory Tool timeline entries citing record IDs, and excerpts of referenced .memory documents (read-only; empty without .memory).
         # v13: AO Goals linked to Goals, summarized from the AO snapshots attached to their Evidence (read-only).
@@ -72,6 +72,10 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
         ] + [
             {"id": f"dependency:{link.required_goal_id}:{goal_id}", "source": link.required_goal_id, "target": goal_id, "kind": "dependency"}
             for goal_id, links in loop.goal_dependencies.items() for link in links
+        ] + [
+            # A follow link is history (built on / continues), never an admission gate.
+            {"id": f"follows:{link.previous_goal_id}:{link.goal_id}", "source": link.previous_goal_id, "target": link.goal_id, "kind": "follows", "actor_id": link.actor_id, "reason": link.reason}
+            for link in loop.goal_follows
         ] + [
             {"id": f"aim-parent:{aim.parent_aim_id}:{aim.id}", "source": aim.parent_aim_id, "target": aim.id, "kind": "aim-parent"}
             for aim in loop.aims.values() if aim.parent_aim_id

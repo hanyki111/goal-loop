@@ -104,7 +104,7 @@ describe('connection colours', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
 
   it('gives each connection kind its own colour and draws the legend and the edges in that colour', async () => {
-    const kinds = ['aim', 'accepted', 'aim-parent', 'parent', 'dependency'] as const;
+    const kinds = ['aim', 'accepted', 'aim-parent', 'parent', 'dependency', 'follows'] as const;
     expect(new Set(kinds.map(kind => EDGE_COLORS[kind])).size).toBe(kinds.length);
     render(<Workspace />);
     await screen.findByRole('combobox', { name: '그래프 배치' });
@@ -115,12 +115,13 @@ describe('connection colours', () => {
     }
     // React Flow does not draw edges in jsdom (nodes are never measured), so check the edges the graph hands it.
     const typed = data as unknown as { edges: never[]; proposals: never[] };
-    const drawn = graphEdges([...typed.edges, { id: 'p', source: 'goal-1', target: 'goal-2', kind: 'parent' }, { id: 'd', source: 'goal-2', target: 'goal-1', kind: 'dependency' }, { id: 's', source: 'aim-1', target: 'aim-2', kind: 'aim-parent' }],
+    const drawn = graphEdges([...typed.edges, { id: 'p', source: 'goal-1', target: 'goal-2', kind: 'parent' }, { id: 'd', source: 'goal-2', target: 'goal-1', kind: 'dependency' }, { id: 's', source: 'aim-1', target: 'aim-2', kind: 'aim-parent' }, { id: 'f', source: 'goal-1', target: 'goal-2', kind: 'follows', reason: '이어감' }],
       typed.proposals.slice(0, 1), new Set(['aim-1', 'aim-2']), new Set(['goal-1', 'goal-2']), new Set(['goal-1']));
     const colour = (className: string) => drawn.find(edge => edge.className === className)?.style.stroke;
     expect(drawn.some(edge => edge.className === 'edge-aim')).toBe(false);  // aim-1 → goal-1 goes through proposal-1 instead
-    expect([colour('edge-proposal'), colour('edge-accepted'), colour('edge-parent'), colour('edge-dependency'), colour('edge-aim-parent')])
-      .toEqual([EDGE_COLORS.proposal, EDGE_COLORS.accepted, EDGE_COLORS.parent, EDGE_COLORS.dependency, EDGE_COLORS['aim-parent']]);
+    expect([colour('edge-proposal'), colour('edge-accepted'), colour('edge-parent'), colour('edge-dependency'), colour('edge-aim-parent'), colour('edge-follows')])
+      .toEqual([EDGE_COLORS.proposal, EDGE_COLORS.accepted, EDGE_COLORS.parent, EDGE_COLORS.dependency, EDGE_COLORS['aim-parent'], EDGE_COLORS.follows]);
+    expect(drawn.find(edge => edge.className === 'edge-follows')).toMatchObject({ animated: false });
     expect(graphEdges(typed.edges, [], new Set(['aim-1']), new Set(['goal-1']), new Set())[0].style.stroke).toBe(EDGE_COLORS.aim);
   });
 });

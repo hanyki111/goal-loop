@@ -121,6 +121,7 @@ before starting work.
 | `proposal-create --actor <agent>` | ✓ | | |
 | `aim-create`, `goal-accept` (fixes the Contract) | | ✓ | |
 | `attempt-start`, `attempt-complete`, `evidence-record`, `ao-import`, `verification-begin` on an accepted Goal the user asked you to work on | ✓ | | |
+| `goal-follow-add` (history only, cites the reason) | ✓ | | |
 | `retry-decide`, `reverification-decide`, `contract-revise`, goal tree links | | ✓ | |
 | `verdict-submit`, `aim-evaluate` | | delegated judging only (below) | ✓ |
 | review resolutions, closures, pause/hold | | | ✓ |
@@ -133,6 +134,15 @@ before starting work.
   (`aim-create --parent`, or `aim-parent-add` once for an existing Aim); when the work can be written
   as a Contract, accept a Goal and split it with the Goal tree instead. A parent Aim is evaluated on
   its own, citing its sub-Aims' evaluations; it is never achieved automatically.
+- Grouping: Proposals and Goals can never move to another Aim, so group early. When a second Proposal
+  on an Aim pursues the same direction as an earlier one (for example, a product idea chosen by a
+  research Goal), propose a sub-Aim for that direction first (with user approval) and put that
+  Proposal and later ones under it.
+- Follow links: when a Goal starts from an earlier Goal's result, or continues a stopped Goal another
+  way, record `goal-follow-add <goal> <previous-goal> --actor <agent> --reason "…"`. It may cross Aims and
+  link finished Goals, never blocks Attempts, and shows as "이어받음" in the graph and the Goal's
+  relations. Use `goal-dependency-add` only when a Goal must wait for another's satisfied Verdict, and
+  `goal-parent-add` only when the parent is a real task with its own Contract.
 - Proposal: one approach. When the cause is uncertain, write it as `Gap: … / Hypothesis: if we …,
   then … improves` so the Goal tests one intervention against the original gap.
   Make the first line a one-sentence summary: the UI uses it as the title, list label, and default Goal
@@ -189,7 +199,7 @@ an accepted approach routes changes to Contract revision or a new Proposal. Afte
 records a retry as a retry Decision followed by a new Attempt, exactly as the CLI does. Evidence
 cited by a Verdict can be corrected from the UI, which opens the same Impact Review flow; 검토함
 shows it, and 실행 대기함 shows only Runtime outbox delivery state. Hiding records is a local display
-preference, not a journal fact. `ui-projection` is schema version 15 (v15 adds `memory_drafts`: a suggested timeline line and `python -m memory_tool record` command for each valid Verdict or Aim Evaluation the timeline does not cite yet, also printed by `memory-draft` and returned by `delegated_judging` as `memory_draft`; Goal Loop never writes the knowledge folder; v14 adds `memory_mentions` and `memory_documents`: Memory Tool timeline entries citing record IDs and excerpts of referenced `.memory` documents, read-only and empty without Memory Tool content; the knowledge folder is found as Memory Tool finds it — `.memory` by default, renamed by the project's `.memory-tool.yml` (`base:`) or `MEMORY_TOOL_BASE`, or the project root itself (`base: "."`), shown in the details' "메모리 기록" section and reference previews; v13 adds `ao_runs`: each AO Goal linked to a Goal, summarized from the AO snapshots in the journal, shown in the Goal detail's "AO 실행" section, including the `completion:advisory` judgments an `ao_cli.v1` run (always started with `--external-verdict`) recorded instead of blocking completion; v12 adds Verdict reasons; v11 and earlier add `contract_history`,
+preference, not a journal fact. `ui-projection` is schema version 16 (v16 adds `follows` edges: a Goal built on or continuing an earlier Goal, with actor and reason, drawn as 이어받음; v15 adds `memory_drafts`: a suggested timeline line and `python -m memory_tool record` command for each valid Verdict or Aim Evaluation the timeline does not cite yet, also printed by `memory-draft` and returned by `delegated_judging` as `memory_draft`; Goal Loop never writes the knowledge folder; v14 adds `memory_mentions` and `memory_documents`: Memory Tool timeline entries citing record IDs and excerpts of referenced `.memory` documents, read-only and empty without Memory Tool content; the knowledge folder is found as Memory Tool finds it — `.memory` by default, renamed by the project's `.memory-tool.yml` (`base:`) or `MEMORY_TOOL_BASE`, or the project root itself (`base: "."`), shown in the details' "메모리 기록" section and reference previews; v13 adds `ao_runs`: each AO Goal linked to a Goal, summarized from the AO snapshots in the journal, shown in the Goal detail's "AO 실행" section, including the `completion:advisory` judgments an `ao_cli.v1` run (always started with `--external-verdict`) recorded instead of blocking completion; v12 adds Verdict reasons; v11 and earlier add `contract_history`,
 `decisions`, `evidence_corrections`, `impact_reviews`, closure/attribution facts, `project_root`,
 references, Evidence attachments, the Aim tree, and sub-Aim evaluation citations). Runtime dispatch remains an explicit
 CLI/operator action.

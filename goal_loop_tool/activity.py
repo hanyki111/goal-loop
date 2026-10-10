@@ -49,6 +49,9 @@ _TITLES = {
     "AimPaused": "Aim 일시 정지",
     "AimResumed": "Aim 재개",
     "VerdictDependencyAdded": "Verdict 의존성 추가",
+    "GoalParentLinked": "상위 과제 연결",
+    "GoalDependencyLinked": "선행 과제 연결",
+    "GoalFollowLinked": "이어받은 과제 연결",
     "ContractVersionAdded": "Contract 버전 추가",
     "DecisionRecorded": "재시도 Decision 기록",
     "ReverificationDecisionRecorded": "재검증 Decision 기록",
@@ -109,6 +112,8 @@ def _detail(event_type: str | None, payload: dict[str, object]) -> str:
         return f"결론: {payload.get('result')}; Evidence: {', '.join(payload.get('evidence_ids', []))}"
     if event_type in {"VerdictReviewResolved", "AimEvaluationReviewResolved"}:
         return f"결정: {payload.get('disposition')}; 이유: {payload.get('reason', '')}"
+    if event_type == "GoalFollowLinked":
+        return f"{payload.get('previous_goal_id')} → {payload.get('goal_id')}; 이유: {payload.get('reason', '')}"
     if event_type == "ContractVersionAdded":
         return str(payload.get("reason", ""))
     if event_type == "ProposalClosed":

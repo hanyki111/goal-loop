@@ -180,7 +180,9 @@ $env:GOAL_LOOP_CEILING_DIRECTORIES = "C:\sandbox"         # project discovery ne
 ```
 
 Sub-Aims (`docs/CORE-AIM-TREE.ko.md`) split a direction that cannot yet be written as a Contract; a
-task that can be written as a Contract is split with the Goal tree instead:
+task that can be written as a Contract is split with the Goal tree instead. Proposals and Goals never
+move to another Aim, so when a second Proposal pursues the same direction, create the sub-Aim first and
+put that Proposal under it:
 
 ```powershell
 goal-loop aim-create "Combat feels good" --parent aim-1     # or later, once: goal-loop aim-parent-add aim-3 aim-1
@@ -551,6 +553,12 @@ npm run tauri build -- --debug
 Use the terminal `goal-loop guide`, `goal-loop guided`, and `goal-loop help --all` for the
 complete self-service CLI guide. The graph shell is a local UI preview, not a replacement for the
 CLI's Runtime outbox or an authorization boundary.
+
+`goal-follow-add <goal> <previous-goal> --actor <name> --reason "…"` records that a Goal started from an
+earlier Goal's result or continues a stopped Goal another way. It may cross Aims and link finished Goals,
+rejects self-links, duplicates and cycles, never blocks Attempts, and appears in `goal-graph`
+(`follows`), `graph-export` (green dotted), `ui-projection` (`follows` edges, schema 16), and the app
+(이어받음 in the graph legend and the Goal's relations, where it can also be added).
 
 `goal-parent-add <child-goal> <parent-goal>` records one immutable parent-child link inside the
 same Aim. `goal-dependency-add <target-goal> <source-goal>` blocks new target Attempts until the

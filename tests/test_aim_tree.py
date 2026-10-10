@@ -128,7 +128,7 @@ class AimTreeCliTests(unittest.TestCase):
             self.assertNotIn(("create_proposal", game["id"]), kinds)  # split into sub-Aims
             self.assertIn(("create_proposal", combat["id"]), kinds)
             projection = self.call(path, "ui-projection")
-            self.assertEqual(projection["schema_version"], 15)
+            self.assertEqual(projection["schema_version"], 16)
             self.assertEqual({aim["id"]: aim["parent_aim_id"] for aim in projection["aims"]}[combat["id"]], game["id"])
             self.assertIn({"id": f"aim-parent:{game['id']}:{stage['id']}", "source": game["id"], "target": stage["id"], "kind": "aim-parent"}, projection["edges"])
             proposal = self.call(path, "proposal-create", combat["id"], "전투 프로토타입")

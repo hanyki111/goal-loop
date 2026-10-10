@@ -242,7 +242,7 @@ class PersistentCliAcceptanceTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "goal.sqlite3"
             projection = self.call(path, "ui-projection")
-            self.assertEqual(projection, {"schema_version": 15, "project_root": None, "aims": [], "nodes": [], "edges": [], "evidence": [], "proposals": [], "attempts": [], "goals": [], "verdicts": [], "evidence_corrections": [], "impact_reviews": [], "decisions": [], "aim_evaluations": [], "ao_runs": [], "memory_mentions": [], "memory_documents": {}, "memory_drafts": []})
+            self.assertEqual(projection, {"schema_version": 16, "project_root": None, "aims": [], "nodes": [], "edges": [], "evidence": [], "proposals": [], "attempts": [], "goals": [], "verdicts": [], "evidence_corrections": [], "impact_reviews": [], "decisions": [], "aim_evaluations": [], "ao_runs": [], "memory_mentions": [], "memory_documents": {}, "memory_drafts": []})
 
     def test_next_is_read_only_and_projects_lifecycle_actions_for_agents(self) -> None:
         with TemporaryDirectory() as directory:

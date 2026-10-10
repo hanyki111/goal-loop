@@ -28,23 +28,30 @@ def render_goal_graph(loop: PersistentGoalLoop) -> str:
             if target in positions and link.required_goal_id in positions:
                 x1, y1 = positions[link.required_goal_id]; x2, y2 = positions[target]
                 edges.append(f"<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='#b54' stroke-width='2' stroke-dasharray='6 4' marker-end='url(#arrow)'/>")
+    for link in loop.goal_follows:
+        if link.goal_id in positions and link.previous_goal_id in positions:
+            x1, y1 = positions[link.previous_goal_id]; x2, y2 = positions[link.goal_id]
+            edges.append(f"<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='#3a7' stroke-width='2' stroke-dasharray='2 4' marker-end='url(#arrow)'><title>{escape(link.reason)}</title></line>")
     rows = []
     for goal in loop.goals.values():
         parent = loop.goal_parents.get(goal.id, "—")
         dependencies = ", ".join(
             item.required_goal_id for item in loop.goal_dependencies.get(goal.id, [])
         ) or "—"
+        follows = ", ".join(
+            item.previous_goal_id for item in loop.goal_follows if item.goal_id == goal.id
+        ) or "—"
         rows.append(
             "<tr>" + "".join(f"<td>{escape(str(value))}</td>" for value in (
-                goal.id, goal.identity.primary_aim_id, goal.phase.value, parent, dependencies,
+                goal.id, goal.identity.primary_aim_id, goal.phase.value, parent, dependencies, follows,
             )) + "</tr>"
         )
-    body = "\n".join(rows) or "<tr><td colspan='5'>Goal이 없습니다.</td></tr>"
+    body = "\n".join(rows) or "<tr><td colspan='6'>Goal이 없습니다.</td></tr>"
     return f"""<!doctype html><html lang='ko'><meta charset='utf-8'>
 <title>Goal Loop Graph</title><style>body{{font-family:system-ui;margin:2rem}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #bbb;padding:.5rem;text-align:left}}th{{background:#eef}}</style>
-<h1>Goal Loop Graph</h1><p>정본 SQLite projection의 읽기 전용 export입니다. 파란선은 parent, 주황 점선은 dependency입니다.</p>
+<h1>Goal Loop Graph</h1><p>정본 SQLite projection의 읽기 전용 export입니다. 파란선은 parent, 주황 점선은 dependency, 초록 점선은 이어받음입니다.</p>
 <svg width='900' height='{max(180, ((len(goals)+2)//3)*130+40)}'><defs><marker id='arrow' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'><path d='M0,0 L8,4 L0,8Z'/></marker></defs>{''.join(edges)}{''.join(nodes)}</svg>
-<table><thead><tr><th>Goal</th><th>Aim</th><th>Phase</th><th>Parent</th><th>Requires Goal</th></tr></thead><tbody>{body}</tbody></table></html>"""
+<table><thead><tr><th>Goal</th><th>Aim</th><th>Phase</th><th>Parent</th><th>Requires Goal</th><th>Follows Goal</th></tr></thead><tbody>{body}</tbody></table></html>"""
 
 
 def export_goal_graph(loop: PersistentGoalLoop, destination: Path) -> None:

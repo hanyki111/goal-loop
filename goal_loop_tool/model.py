@@ -252,3 +252,12 @@ class GoalDependency:
     dependent_goal_id: str
     required_goal_id: str
 
+
+@dataclass(frozen=True)
+class GoalFollow:
+    """A Goal started from an earlier Goal's result or continues a stopped one. History only: never gates admission."""
+    goal_id: str
+    previous_goal_id: str
+    actor_id: str
+    reason: str
+

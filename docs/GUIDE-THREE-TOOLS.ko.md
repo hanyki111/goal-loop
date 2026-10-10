@@ -143,6 +143,8 @@ npm run orchestrate -- milestone-create $ID --id lane-1 --name "첫 레인" -w $
 - 판정이 기록되면 `goal-loop memory-draft`의 초안으로 `python -m memory_tool record "…"`를 남긴다.
 - 각 Aim의 첫 접근안에 "무엇을 이루면 달성인가"를 쓰고 `proposal-close --kind criteria`로 닫는다.
   각 Goal의 완료 기준에는 멈춤 조건을 쓴다.
+- 같은 방향의 접근안이 두 번째로 나오면 그 방향을 하위 목표로 먼저 만들고 사용자 승인을 받는다(접근안과 Goal은 목표를 옮길 수 없다).
+- Goal이 앞 Goal의 결과로 시작했거나 중단된 Goal을 이어가면 `goal-follow-add <goal> <앞 goal> --actor claude --reason "…"`로 남긴다.
 ```
 
 ## 5. 작업 한 바퀴
@@ -159,6 +161,19 @@ goal-loop goal-accept proposal-2 --target "할 일" --responsibility produce `
   --criterion "(1) … (2) … 멈춤 조건: …" `
   --verification "확인할 명령" --key first-goal
 ```
+
+목표 아래에 과제가 늘어나면 두 가지로 정리합니다.
+
+- **같은 방향은 하위 목표로 묶기:** 예를 들어 시장 조사 과제가 "공고 해석 서비스"를 추천했고 그 방향의 접근안이
+  두 번째로 나온다면, 먼저 `goal-loop aim-create "공고 해석 서비스로 첫 유료 고객" --parent aim-1`로 하위 목표를 만들고
+  이후 접근안을 그 아래(`proposal-create aim-2 …`)에 둡니다. 이미 만든 접근안과 과제는 다른 목표로 옮길 수 없으므로
+  일찍 묶는 편이 좋습니다.
+- **흐름은 이어받음으로 잇기:** 과제가 앞 과제의 결과를 근거로 시작했거나, 중단된 과제를 다른 방식으로 이어가면
+  `goal-loop goal-follow-add goal-3 goal-2 --actor claude --reason "규칙 기반 추출이 일반화에 실패해 LLM 추출로 이어받음"`을
+  기록합니다. 목표가 달라도, 앞 과제가 끝났어도 연결할 수 있고 실행을 막지 않습니다. 앱 그래프에는 초록 점선(이어받음)으로,
+  과제 상세의 "다른 과제와의 연결"에는 사유와 함께 보입니다.
+- 앞 과제가 충족 판정을 받아야만 실행할 수 있다면 `goal-dependency-add`(선행 과제)를, 자기 완료 기준을 가진 묶음 과제가
+  따로 있다면 `goal-parent-add`(상위 과제)를 씁니다.
 
 ### 5.2 AO에서 실행하기
 

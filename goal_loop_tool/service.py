@@ -31,6 +31,7 @@ from .model import (
     ReviewResolution,
     VerdictDependency,
     GoalDependency,
+    GoalFollow,
 )
 
 
@@ -78,6 +79,7 @@ class GoalLoop:
         self.verdict_dependencies: dict[str, list[VerdictDependency]] = {}
         self.goal_parents: dict[str, str] = {}
         self.goal_dependencies: dict[str, list[GoalDependency]] = {}
+        self.goal_follows: list[GoalFollow] = []
         self.execution_grants: dict[str, set[str]] = {}
         self.goal_holds: set[str] = set()
         # Who placed a Hold and why; legacy Holds recorded before 2026-10-03 carry no reason.
@@ -651,6 +653,34 @@ class GoalLoop:
         if dependency in self.goal_dependencies.get(dependent_goal_id, []):
             raise GoalLoopError("This Goal dependency already exists.")
         self.goal_dependencies.setdefault(dependent_goal_id, []).append(dependency)
+
+    def add_goal_follow(self, goal_id: str, previous_goal_id: str, actor_id: str, reason: str) -> GoalFollow:
+        """Record that a Goal builds on or continues an earlier Goal, across Aims and in any phase."""
+        self._require(self.goals, goal_id, "Goal")
+        self._require(self.goals, previous_goal_id, "Previous Goal")
+        if not actor_id.strip():
+            raise GoalLoopError("A follow link requires an actor.")
+        if not reason.strip():
+            raise GoalLoopError("A follow link requires a nonempty reason.")
+        if goal_id == previous_goal_id:
+            raise GoalLoopError("A Goal cannot follow itself.")
+        if any(item.goal_id == goal_id and item.previous_goal_id == previous_goal_id for item in self.goal_follows):
+            raise GoalLoopError("This follow link already exists.")
+        if self._goal_follows_from(previous_goal_id, goal_id):
+            raise GoalLoopError("A follow link cannot create a cycle.")
+        link = GoalFollow(goal_id, previous_goal_id, actor_id, reason)
+        self.goal_follows.append(link)
+        return link
+
+    def _goal_follows_from(self, goal_id: str, earlier_goal_id: str, seen: set[str] | None = None) -> bool:
+        seen = set() if seen is None else seen
+        if goal_id in seen:
+            return False
+        seen.add(goal_id)
+        return any(
+            item.previous_goal_id == earlier_goal_id or self._goal_follows_from(item.previous_goal_id, earlier_goal_id, seen)
+            for item in self.goal_follows if item.goal_id == goal_id
+        )
 
     def _goal_depends_on(self, goal_id: str, target_goal_id: str) -> bool:
         return any(

@@ -71,7 +71,7 @@ class AoLinkTests(unittest.TestCase):
         attempt = self.completed_attempt(goal)
         evidence = run("ao-import", attempt["id"], "claude", str(self.ao_workspace / "projects" / "demo"), "fix-search")
         projection = run("ui-projection")
-        self.assertEqual(projection["schema_version"], 15)
+        self.assertEqual(projection["schema_version"], 16)
         [summary] = [item for item in projection["ao_runs"] if item["goal_id"] == goal["id"]]
         self.assertEqual((summary["ao_project_id"], summary["ao_goal_id"], summary["title"], summary["status"]), ("demo", "fix-search", "검색", "completed"))
         self.assertEqual((summary["evidence_ids"], summary["attempt_ids"]), ([evidence["id"]], [attempt["id"]]))

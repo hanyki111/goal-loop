@@ -9,7 +9,7 @@ from goal_loop_tool.ui_projection import goal_graph_projection
 class UiProjectionTests(unittest.TestCase):
     def test_empty_graph_is_versioned_and_json_ready(self):
         projection = goal_graph_projection(GoalLoop())
-        self.assertEqual(projection, {"schema_version": 15, "project_root": None, "aims": [], "nodes": [], "edges": [], "evidence": [], "proposals": [], "attempts": [], "goals": [], "verdicts": [], "evidence_corrections": [], "impact_reviews": [], "decisions": [], "aim_evaluations": [], "ao_runs": [], "memory_mentions": [], "memory_documents": {}, "memory_drafts": []})
+        self.assertEqual(projection, {"schema_version": 16, "project_root": None, "aims": [], "nodes": [], "edges": [], "evidence": [], "proposals": [], "attempts": [], "goals": [], "verdicts": [], "evidence_corrections": [], "impact_reviews": [], "decisions": [], "aim_evaluations": [], "ao_runs": [], "memory_mentions": [], "memory_documents": {}, "memory_drafts": []})
 
     def test_detail_records_support_aim_lanes_and_attempt_timeline_without_graph_noise(self):
         loop = GoalLoop()

@@ -444,6 +444,10 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .legend-line.aim-parent{border-top:3px solid #475569}
 .legend-line.parent{border-top-color:#3b82f6}
 .legend-line.dependency{border-top:2px dashed #f59e0b}
+.legend-line.follows{border-top:2px dotted #14b8a6}
+.react-flow__edge.edge-follows path{stroke-width:2;stroke-dasharray:2 4}
+.relation-list li{flex-wrap:wrap}
+.relation-list .relation-reason{flex-basis:100%;color:#64748b;font-size:calc(11px * var(--ui-scale))}
 .layout-choice select{width:auto;padding:1px 4px;font-size:inherit;margin-left:4px}
 .graph-filter{display:inline-block;margin-right:calc(6px * var(--ui-scale))}
 .graph-filter summary{padding:1px 6px;border:1px solid #e2e8f0;border-radius:6px;font-weight:600;color:#475569}
