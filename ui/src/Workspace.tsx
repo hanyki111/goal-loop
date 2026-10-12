@@ -175,10 +175,13 @@ export function Workspace() {
   useEffect(() => { try { localStorage.setItem('goal-loop.graph.layout', graphLayout); } catch { /* optional preference */ } }, [graphLayout]);
   const [graphFilter, setGraphFilter] = useState<GraphFilter>(() => { try { return { ...NO_GRAPH_FILTER, ...JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}') }; } catch { return NO_GRAPH_FILTER; } });
   useEffect(() => { try { localStorage.setItem('goal-loop.graph.filter', JSON.stringify(graphFilter)); } catch { /* optional preference */ } }, [graphFilter]);
-  const positionsKey = `goal-loop.graph.positions.v4.${workspaceId}${graphLayout === 'list' ? '.list' : ''}`;
+  // Done Aims folded by the collapse filter that the person opened again (this session only).
+  const [expandedAims, setExpandedAims] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => setExpandedAims(previous => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; });
+  const positionsKey = `goal-loop.graph.positions.v5.${workspaceId}${graphLayout === 'list' ? '.list' : ''}`;
   // A new layout, filter or Proposal toggle moves nodes; show the whole result instead of an empty corner.
   const refit = useRef(false);
-  useEffect(() => { refit.current = true; }, [graphLayout, graphFilter, showProposals]);
+  useEffect(() => { refit.current = true; }, [graphLayout, graphFilter, showProposals, expandedAims]);
   useEffect(() => {
     if (!flowInstance || !selection || !data) return;
     const goalOf = (attemptId: string) => data.attempts.find(attempt => attempt.id === attemptId)?.goal_id;
@@ -264,58 +267,95 @@ export function Workspace() {
     if (!data) return;
     let saved: Record<string, { x: number; y: number }> = {};
     try { saved = JSON.parse(localStorage.getItem(positionsKey) ?? '{}'); } catch { /* deterministic layout remains available */ }
-    const graph = graphVisibility(data, archivedIds, graphFilter, showProposals, graphLayout);
+    const graph = graphVisibility(data, archivedIds, graphFilter, showProposals, graphLayout, expandedAims);
     const visibleAims = graph.aims;
     const visibleAimIds = new Set(visibleAims.map(aim => aim.id));
     const visibleGoals = graph.goals;
     const visibleGoalIds = new Set(visibleGoals.map(goal => goal.id));
     const visibleProposals = graph.proposals;
     const layoutProposals = graph.layoutProposals;
-    const LANE_GAP = 50; const SLOT = 240; const LEVEL_GAP = 90;
-    const laneX = new Map<string, number>(); const proposalX = new Map<string, number>();
+    const LANE_GAP = 50; const SLOT = 240; const LEVEL_GAP = 90; const CELL_GAP = 30;
+    // A row of sibling sub-Aims wraps at a width limit chosen below, and a lane with many Proposals becomes a grid of at most this many columns.
+    const ROW_WIDTH_CHOICES = [1200, 1800, 2400, 3600, 4800, 7200, 9600]; const MAX_GRID_COLS = 4;
+    const showing = visibleProposals.length > 0;
+    const BASE_Y = showing ? 200 : 215; const GOAL_DROP = showing ? 140 : 0;
+    const GOAL_PITCH = 150; const GOAL_H = 135; const PROPOSAL_H = 120; const AIM_ONLY_H = 200;
     const goalProposal = new Map(layoutProposals.filter(proposal => proposal.accepted_goal_id).map(proposal => [proposal.accepted_goal_id as string, proposal]));
     const drawnGoalProposal = new Set(visibleProposals.filter(proposal => proposal.accepted_goal_id).map(proposal => proposal.accepted_goal_id as string));
     const looseRows = new Map<string, number>(); const looseCount = new Map<string, number>();
     for (const goal of visibleGoals) if (!goalProposal.has(goal.id)) { const row = looseCount.get(goal.aim_id) ?? 0; looseRows.set(goal.id, row); looseCount.set(goal.aim_id, row + 1); }
     const parentOf = new Map(data.edges.filter(edge => edge.kind === 'parent').map(edge => [edge.target, edge.source]));
     const depthOf = (id: string) => { let depth = 0; for (let cursor = parentOf.get(id); cursor && depth < 20; cursor = parentOf.get(cursor)) depth += 1; return depth; };
-    const PROPOSAL_Y = 190; const GOAL_Y = visibleProposals.length ? 330 : 205;
-    // Sub-Aims sit one level below their parent, centred under it; each level is as tall as its tallest lane.
     const subAims = (id: string) => visibleAims.filter(aim => aim.parent_aim_id === id);
     const roots = visibleAims.filter(aim => !aim.parent_aim_id || !visibleAimIds.has(aim.parent_aim_id));
     const ownProposals = (id: string) => layoutProposals.filter(proposal => proposal.aim_id === id);
     const looseGoals = (id: string) => visibleGoals.filter(goal => goal.aim_id === id && !goalProposal.has(goal.id));
-    const ownWidth = (id: string) => Math.max(1, ownProposals(id).length + (looseGoals(id).length ? 1 : 0)) * SLOT;
-    const subtreeWidth = (id: string, guard = 0): number => { const children = guard > 20 ? [] : subAims(id); const childrenWidth = children.reduce((sum, child) => sum + subtreeWidth(child.id, guard + 1), 0) + Math.max(0, children.length - 1) * LANE_GAP; return Math.max(ownWidth(id), childrenWidth); };
-    const laneHeight = (id: string) => { const rows = visibleGoals.filter(goal => goal.aim_id === id).map(goal => goalProposal.has(goal.id) ? depthOf(goal.id) : looseRows.get(goal.id) ?? 0); return rows.length ? GOAL_Y + Math.max(...rows) * 150 + 110 - 40 : visibleProposals.some(proposal => proposal.aim_id === id) ? PROPOSAL_Y + 110 - 40 : 110; };
-    const aimLevel = new Map<string, number>(); const levelHeight: number[] = [];
-    const place = (id: string, left: number, level: number, guard = 0) => {
-      const width = subtreeWidth(id); const own = ownWidth(id); const laneLeft = left + (width - own) / 2;
-      aimLevel.set(id, level); levelHeight[level] = Math.max(levelHeight[level] ?? 0, laneHeight(id));
-      laneX.set(id, laneLeft + own / 2 - SLOT / 2);
-      const proposals = ownProposals(id); proposals.forEach((proposal, index) => proposalX.set(proposal.id, laneLeft + index * SLOT));
-      looseGoals(id).forEach(goal => proposalX.set(`loose:${goal.id}`, laneLeft + proposals.length * SLOT));
-      if (guard > 20) return;
-      const children = subAims(id); const childrenWidth = children.reduce((sum, child) => sum + subtreeWidth(child.id), 0) + Math.max(0, children.length - 1) * LANE_GAP;
-      let cursor = left + (width - childrenWidth) / 2;
-      for (const child of children) { place(child.id, cursor, level + 1, guard + 1); cursor += subtreeWidth(child.id) + LANE_GAP; }
+    type Cell = { key: string; height: number };
+    // One cell is a Proposal column (with its Goal chain below) or the stack of Goals that came from no Proposal.
+    const cellsOf = (id: string): Cell[] => {
+      const cells: Cell[] = ownProposals(id).map(proposal => { const goalId = proposal.accepted_goal_id; return { key: proposal.id, height: goalId && visibleGoalIds.has(goalId) ? GOAL_DROP + depthOf(goalId) * GOAL_PITCH + GOAL_H : PROPOSAL_H }; });
+      const loose = looseGoals(id); if (loose.length) cells.push({ key: `loose:${id}`, height: GOAL_DROP + (loose.length - 1) * GOAL_PITCH + GOAL_H });
+      return cells;
     };
-    let rootCursor = 0;
-    for (const root of roots) { place(root.id, rootCursor, 0); rootCursor += subtreeWidth(root.id) + LANE_GAP; }
-    const levelTop = (level: number) => { let top = 0; for (let index = 0; index < level; index += 1) top += (levelHeight[index] ?? 110) + LEVEL_GAP; return top; };
-    const aimTop = (aimId: string) => levelTop(aimLevel.get(aimId) ?? 0);
+    // Wrapping trades width for height, so try several limits and keep the one that fits the canvas at the largest zoom.
+    const arrange = (limit: number) => {
+      const aimPos = new Map<string, { x: number; y: number }>(); const cellPos = new Map<string, { x: number; y: number }>();
+      type Measure = { width: number; height: number; ownWidth: number; ownHeight: number; cols: number; cells: Cell[]; rowHeights: number[]; rows: string[][] };
+      const measures = new Map<string, Measure>();
+      const rowSpan = (row: string[], guard: number) => row.reduce((sum, id) => sum + measure(id, guard).width, 0) + (row.length - 1) * LANE_GAP;
+      const rowHeight = (row: string[], guard: number) => Math.max(...row.map(id => measure(id, guard).height));
+      const wrapRows = (ids: string[], guard: number) => {
+        const rows: string[][] = []; let current: string[] = []; let used = 0;
+        for (const id of ids) { const width = measure(id, guard).width; if (current.length && used + LANE_GAP + width > limit) { rows.push(current); current = []; used = 0; } used += (current.length ? LANE_GAP : 0) + width; current.push(id); }
+        if (current.length) rows.push(current);
+        return rows;
+      };
+      const measure = (id: string, guard = 0): Measure => {
+        const known = measures.get(id); if (known) return known;
+        const cells = cellsOf(id);
+        const cols = cells.length <= MAX_GRID_COLS ? cells.length : Math.min(MAX_GRID_COLS, Math.ceil(cells.length / 2));
+        const rowHeights: number[] = []; for (let first = 0; first < cells.length; first += cols) rowHeights.push(Math.max(...cells.slice(first, first + cols).map(cell => cell.height)));
+        const ownWidth = Math.max(1, cols) * SLOT;
+        const ownHeight = cells.length ? BASE_Y + rowHeights.reduce((sum, height) => sum + height, 0) + (rowHeights.length - 1) * CELL_GAP : AIM_ONLY_H;
+        const rows = guard > 20 ? [] : wrapRows(subAims(id).map(aim => aim.id), guard + 1);
+        const childWidth = rows.length ? Math.max(...rows.map(row => rowSpan(row, guard + 1))) : 0;
+        const childHeight = rows.length ? rows.reduce((sum, row) => sum + rowHeight(row, guard + 1), 0) + (rows.length - 1) * LEVEL_GAP : 0;
+        const result = { width: Math.max(ownWidth, childWidth), height: ownHeight + (rows.length ? LEVEL_GAP + childHeight : 0), ownWidth, ownHeight, cols, cells, rowHeights, rows };
+        measures.set(id, result); return result;
+      };
+      // Sub-Aims sit below their parent in rows no wider than the limit, each row centred under the parent.
+      const place = (id: string, left: number, top: number, guard = 0) => {
+        const m = measure(id); const ownLeft = left + (m.width - m.ownWidth) / 2;
+        aimPos.set(id, { x: ownLeft + m.ownWidth / 2 - SLOT / 2, y: top + 40 });
+        let y = top + BASE_Y;
+        for (let first = 0, row = 0; first < m.cells.length; first += m.cols, row += 1) { m.cells.slice(first, first + m.cols).forEach((cell, col) => cellPos.set(cell.key, { x: ownLeft + col * SLOT, y })); y += m.rowHeights[row] + CELL_GAP; }
+        if (guard > 20) return;
+        let rowTop = top + m.ownHeight + LEVEL_GAP;
+        for (const row of m.rows) { let x = left + (m.width - rowSpan(row, guard + 1)) / 2; for (const child of row) { place(child, x, rowTop, guard + 1); x += measure(child, guard + 1).width + LANE_GAP; } rowTop += rowHeight(row, guard + 1) + LEVEL_GAP; }
+      };
+      const rootRows = wrapRows(roots.map(aim => aim.id), 0); const rootWidth = rootRows.length ? Math.max(...rootRows.map(row => rowSpan(row, 0))) : 0; let rootTop = 0;
+      for (const row of rootRows) { let x = (rootWidth - rowSpan(row, 0)) / 2; for (const id of row) { place(id, x, rootTop); x += measure(id).width + LANE_GAP; } rootTop += rowHeight(row, 0) + LEVEL_GAP; }
+      return { aimPos, cellPos, width: rootWidth, height: Math.max(0, rootTop - LEVEL_GAP) };
+    };
+    const canvasBox = document.querySelector('.react-flow')?.getBoundingClientRect();
+    const canvasWidth = canvasBox?.width || 1050; const canvasHeight = canvasBox?.height || 800;
+    const fitScale = (box: { width: number; height: number }) => Math.min(canvasWidth / Math.max(box.width, 1), canvasHeight / Math.max(box.height, 1));
+    let arranged = arrange(ROW_WIDTH_CHOICES[0]);
+    for (const limit of ROW_WIDTH_CHOICES.slice(1)) { const candidate = arrange(limit); if (fitScale(candidate) > fitScale(arranged) * 1.02) arranged = candidate; }
+    const { aimPos, cellPos } = arranged;
     const position = (node: GraphNode) => {
-      if (node.kind === 'aim') return { x: laneX.get(node.id) ?? 0, y: 40 + aimTop(node.id) };
+      if (node.kind === 'aim') return aimPos.get(node.id) ?? { x: 0, y: 40 };
       const proposal = goalProposal.get(node.id);
-      if (proposal) return { x: proposalX.get(proposal.id) ?? 0, y: aimTop(node.aim_id) + GOAL_Y + depthOf(node.id) * 150 };
-      return { x: proposalX.get(`loose:${node.id}`) ?? laneX.get(node.aim_id) ?? 0, y: aimTop(node.aim_id) + GOAL_Y + (looseRows.get(node.id) ?? 0) * 150 };
+      if (proposal) { const cell = cellPos.get(proposal.id) ?? { x: 0, y: 0 }; return { x: cell.x, y: cell.y + GOAL_DROP + depthOf(node.id) * GOAL_PITCH }; }
+      const cell = cellPos.get(`loose:${node.aim_id}`) ?? aimPos.get(node.aim_id) ?? { x: 0, y: 0 };
+      return { x: cell.x, y: cell.y + GOAL_DROP + (looseRows.get(node.id) ?? 0) * GOAL_PITCH };
     };
     const proposalLabel = (proposal: Proposal) => isCriteria(proposal) ? '달성 기준' : ({ open: '검토 중', accepted: '과제로 확정됨', closed: '닫힘' }[proposal.status] ?? stateName(proposal.status));
-    const proposalNodes: Node[] = visibleProposals.map(proposal => ({ id: proposal.id, position: saved[proposal.id] ?? { x: proposalX.get(proposal.id) ?? 0, y: aimTop(proposal.aim_id) + PROPOSAL_Y }, data: { label: <><strong>접근안 · Proposal <small className="node-id">{proposal.id}</small></strong><span>{proposalTitle(proposal.direction)}</span><em className={`state-badge proposal-${proposal.status}`}>{proposalLabel(proposal)}</em></> }, className: `graph-node proposal ${proposal.status} ${proposal.status === 'closed' || SETTLED_GOAL_PHASES.has(data.goals.find(goal => goal.id === proposal.accepted_goal_id)?.phase ?? '') ? 'settled' : ''}` }));
-    setFlowNodes([...data.nodes.filter(node => node.kind === 'aim' ? visibleAimIds.has(node.id) : visibleGoalIds.has(node.id)).map(node => ({ id: node.id, position: saved[node.id] ?? position(node), data: { label: <><strong>{node.kind === 'aim' ? '목표 · Aim' : '과제 · Goal'} <small className="node-id">{node.id}</small></strong><span>{node.label}</span><em className={`state-badge ${node.phase}`}>{stateName(node.phase)}{node.kind === 'goal' && verificationVoided(node, data) ? ' · 검증 무효' : ''}{node.dependency_blocked ? ' · 의존성 대기' : ''}{node.kind === 'goal' && node.phase === 'active' && data.attempts.filter(item => item.goal_id === node.id).at(-1)?.outcome === 'failed' ? ' · 최근 실행 실패' : ''}{node.kind === 'goal' && data.goals.find(item => item.id === node.id)?.held ? ' · 실행 보류' : ''}</em>{node.kind === 'goal' && <FollowNotes edges={data.edges} goalId={node.id} />}</> }, className: `graph-node ${node.kind} ${node.dependency_blocked ? 'blocked' : ''} ${node.phase === 'stopped' || node.phase === 'abandoned' ? 'settled' : ''}` })), ...proposalNodes]);
+    const proposalNodes: Node[] = visibleProposals.map(proposal => ({ id: proposal.id, position: saved[proposal.id] ?? cellPos.get(proposal.id) ?? { x: 0, y: 0 }, data: { label: <><strong>접근안 · Proposal <small className="node-id">{proposal.id}</small></strong><span>{proposalTitle(proposal.direction)}</span><em className={`state-badge proposal-${proposal.status}`}>{proposalLabel(proposal)}</em></> }, className: `graph-node proposal ${proposal.status} ${proposal.status === 'closed' || SETTLED_GOAL_PHASES.has(data.goals.find(goal => goal.id === proposal.accepted_goal_id)?.phase ?? '') ? 'settled' : ''}` }));
+    setFlowNodes([...data.nodes.filter(node => node.kind === 'aim' ? visibleAimIds.has(node.id) : visibleGoalIds.has(node.id)).map(node => ({ id: node.id, position: saved[node.id] ?? position(node), data: { label: <><strong>{node.kind === 'aim' ? '목표 · Aim' : '과제 · Goal'} <small className="node-id">{node.id}</small></strong><span>{node.label}</span><em className={`state-badge ${node.phase}`}>{stateName(node.phase)}{node.kind === 'goal' && verificationVoided(node, data) ? ' · 검증 무효' : ''}{node.dependency_blocked ? ' · 의존성 대기' : ''}{node.kind === 'goal' && node.phase === 'active' && data.attempts.filter(item => item.goal_id === node.id).at(-1)?.outcome === 'failed' ? ' · 최근 실행 실패' : ''}{node.kind === 'goal' && data.goals.find(item => item.id === node.id)?.held ? ' · 실행 보류' : ''}</em>{node.kind === 'goal' && <FollowNotes edges={data.edges} goalId={node.id} />}{node.kind === 'aim' && graph.collapsible.has(node.id) && <CollapseToggle note={graph.collapsed.get(node.id)} expanded={expandedAims.has(node.id)} onToggle={() => toggleExpanded(node.id)} />}</> }, className: `graph-node ${node.kind} ${node.dependency_blocked ? 'blocked' : ''} ${node.phase === 'stopped' || node.phase === 'abandoned' ? 'settled' : ''}` })), ...proposalNodes]);
     setFlowEdges(graphEdges(data.edges, visibleProposals, visibleAimIds, visibleGoalIds, drawnGoalProposal));
     if (refit.current && flowInstance) { refit.current = false; window.setTimeout(() => { void flowInstance.fitView({ padding: 0.08, maxZoom: 1.1, minZoom: 0.5, duration: 200 }); }, 60); }
-  }, [data, archivedIds, workspaceId, setFlowNodes, showProposals, graphLayout, graphFilter, positionsKey, flowInstance]);
+  }, [data, archivedIds, workspaceId, setFlowNodes, showProposals, graphLayout, graphFilter, expandedAims, positionsKey, flowInstance]);
 
   const runCommand = async (commandName: string, args: string[], notice?: string): Promise<boolean> => {
     if (!isTauri()) { setError('변경은 Tauri 데스크톱 앱에서만 실행할 수 있습니다.'); return false; }
@@ -421,7 +461,7 @@ export function Workspace() {
   const beginAim = () => { setView('workspace'); setSelection(null); setComposer('aim'); };
   const selectRecord = (value: Selection) => { setComposer(null); setSelection(value); };
   const renameWorkspace = async (name: string) => { if (!isTauri() || !workspace) return; name = name.trim(); if (!name || name === workspace.name) { setWorkspaceDialog(null); return; } try { const renamed = await invoke<WorkspaceRecord>('workspace_rename', { workspaceId: workspace.id, name }); setWorkspaces(current => current.map(item => item.id === renamed.id ? renamed : item)); setWorkspaceDialog(null); setNotice('프로젝트 이름을 바꿨습니다.'); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
-  const deleteWorkspace = async () => { if (!isTauri() || !workspace) return; try { const result = await invoke<WorkspaceDeleteResult>('workspace_delete', { workspaceId: workspace.id }); try { localStorage.removeItem(`goal-loop.archive.${workspace.id}`); localStorage.removeItem(`goal-loop.graph.positions.v4.${workspace.id}`); } catch { /* local preferences are already secondary */ } setWorkspaces(result.workspaces); setWorkspaceId(result.workspaces[0]?.id ?? ''); setData(null); setSelection(null); setWorkspaceDialog(null); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
+  const deleteWorkspace = async () => { if (!isTauri() || !workspace) return; try { const result = await invoke<WorkspaceDeleteResult>('workspace_delete', { workspaceId: workspace.id }); try { localStorage.removeItem(`goal-loop.archive.${workspace.id}`); localStorage.removeItem(`goal-loop.graph.positions.v5.${workspace.id}`); } catch { /* local preferences are already secondary */ } setWorkspaces(result.workspaces); setWorkspaceId(result.workspaces[0]?.id ?? ''); setData(null); setSelection(null); setWorkspaceDialog(null); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } };
   return <main className="workspace" style={{ '--ui-scale': String(uiScale / 100) } as React.CSSProperties}>
     <header className="app-header"><div className="app-brand"><h1>Goal Loop</h1></div><label className="workspace-switcher"><span>현재 프로젝트</span><select aria-label="현재 작업 공간" value={workspaceId} onChange={event => { setWorkspaceId(event.target.value); setSelection(null); setComposer(null); }}>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><details className="header-menu project-menu"><summary>프로젝트 관리</summary><div className="header-menu-content">{workspace?.project ? <p className="project-path" title={workspace.project}>폴더: {workspace.project}</p> : <p className="project-path">폴더 없이 만든 프로젝트입니다. 참고 문서는 전체 경로나 URL로만 연결할 수 있습니다.</p>}<button type="button" className="quiet" onClick={() => setWorkspaceDialog('rename')}>이름 변경</button><button type="button" onClick={() => void openProjectFolder()}>프로젝트 폴더 열기</button><details className="folderless-create"><summary>폴더 없이 만들기</summary><form onSubmit={createWorkspace}><input name="workspace-name" aria-label="새 작업 공간 이름" placeholder="새 프로젝트 이름" required /><button type="submit">만들기</button></form></details><button type="button" className="workspace-delete" onClick={() => setWorkspaceDialog('delete')}>{workspace?.project ? '목록에서 제거' : '프로젝트 삭제'}</button></div></details><nav aria-label="주요 화면"><button className={view === 'workspace' ? 'selected' : ''} onClick={() => setView('workspace')}>대시보드</button><button className={view === 'inbox' ? 'selected' : ''} onClick={() => setView('inbox')}>전체 작업함 {visibleActions.length ? `(${visibleActions.length})` : ''}</button><button className={view === 'reviews' ? 'selected' : ''} onClick={() => setView('reviews')}>검토함{reviewCount ? ` (${reviewCount})` : ''}</button><button className={view === 'runtime' ? 'selected' : ''} onClick={() => setView('runtime')}>실행 대기함{aoStatus.some(row => row.waiting_for_human) ? ` (사람 대기 ${aoStatus.filter(row => row.waiting_for_human).length})` : ''}</button><button className={view === 'help' ? 'selected' : ''} onClick={() => setView('help')}>도움말</button></nav><div className="header-actions">{data && <RecordSearch data={data} hiddenIds={archivedIds} onPick={value => { setView('workspace'); selectRecord(value); }} />}<details className="header-menu view-menu"><summary>보기 · {uiScale}%</summary><div className="header-menu-content"><span>화면 배율</span><div className="scale-options">{SCALE_OPTIONS.map(scale => <button key={scale} className={scale === uiScale ? 'selected' : 'quiet'} type="button" onClick={() => setUiScale(scale)}>{scale}%</button>)}</div><button type="button" className="quiet" onClick={() => setUiScale(100)}>기본 배율로 되돌리기</button></div></details>{refreshing && <span className="refresh-indicator" role="status" aria-live="polite"><i className="spinner" aria-hidden="true" />불러오는 중…</span>}<button className="quiet" onClick={() => void load()} disabled={busy}>새로고침</button></div></header>
     {error && view !== 'workspace' && <ErrorNotice raw={error} onClose={() => setError('')} />}
@@ -567,20 +607,41 @@ export function graphEdges(edges: Projection['edges'], proposals: Proposal[], ai
 }
 
 export type GraphLayout = 'columns' | 'list';
-export type GraphFilter = { hideDoneAims: boolean; hideDoneGoals: boolean; hideClosedProposals: boolean };
-export const NO_GRAPH_FILTER: GraphFilter = { hideDoneAims: false, hideDoneGoals: false, hideClosedProposals: false };
+export type GraphFilter = { hideDoneAims: boolean; hideDoneGoals: boolean; hideClosedProposals: boolean; collapseDoneAims?: boolean };
+export const NO_GRAPH_FILTER: GraphFilter = { hideDoneAims: false, hideDoneGoals: false, hideClosedProposals: false, collapseDoneAims: false };
 const DONE_AIM = new Set(['achieved', 'abandoned']);
 const DONE_GOAL = new Set(['verified', 'stopped']);
 
 // What the graph draws and where Goals sit. A display filter never changes records; hidden items stay
 // reachable from the navigator and the search. In the column layout each accepted Goal keeps the column of
 // the Proposal it came from even when Proposal nodes are not drawn.
-export function graphVisibility(data: Projection, archivedIds: Set<string>, filter: GraphFilter, showProposals: boolean, layout: GraphLayout) {
-  const aims = data.aims.filter(aim => !archivedIds.has(aim.id) && !(filter.hideDoneAims && DONE_AIM.has(aim.phase)));
+export function graphVisibility(data: Projection, archivedIds: Set<string>, filter: GraphFilter, showProposals: boolean, layout: GraphLayout, expanded: ReadonlySet<string> = new Set()) {
+  const baseAims = data.aims.filter(aim => !archivedIds.has(aim.id) && !(filter.hideDoneAims && DONE_AIM.has(aim.phase)));
+  const passingGoals = data.goals.filter(goal => !archivedIds.has(goal.id) && !(filter.hideDoneGoals && DONE_GOAL.has(goal.phase)));
+  // Collapse: an achieved Aim whose whole subtree is finished becomes one card with a count of what it hides.
+  const collapsed = new Map<string, { aims: number; goals: number }>(); const collapsible = new Set<string>(); const foldedAims = new Set<string>();
+  if (filter.collapseDoneAims) {
+    const phaseOf = new Map(baseAims.map(aim => [aim.id, aim.phase]));
+    const below = (id: string, guard = 0): string[] => guard > 20 ? [] : baseAims.filter(aim => aim.parent_aim_id === id).flatMap(aim => [aim.id, ...below(aim.id, guard + 1)]);
+    for (const aim of baseAims) {
+      if (aim.phase !== 'achieved') continue;
+      const descendants = below(aim.id);
+      const owned = new Set([aim.id, ...descendants]);
+      const ownedGoals = passingGoals.filter(goal => owned.has(goal.aim_id));
+      if (!descendants.length && !ownedGoals.length) continue;
+      if (descendants.some(id => !DONE_AIM.has(phaseOf.get(id) ?? '')) || ownedGoals.some(goal => !DONE_GOAL.has(goal.phase))) continue;
+      collapsible.add(aim.id);
+      if (expanded.has(aim.id)) continue;
+      collapsed.set(aim.id, { aims: descendants.length, goals: ownedGoals.length });
+      descendants.forEach(id => foldedAims.add(id));
+    }
+  }
+  const aims = baseAims.filter(aim => !foldedAims.has(aim.id));
   const aimIds = new Set(aims.map(aim => aim.id));
-  const goals = data.goals.filter(goal => aimIds.has(goal.aim_id) && !archivedIds.has(goal.id) && !(filter.hideDoneGoals && DONE_GOAL.has(goal.phase)));
+  const shown = (aimId: string) => aimIds.has(aimId) && !collapsed.has(aimId);
+  const goals = passingGoals.filter(goal => shown(goal.aim_id));
   const goalIds = new Set(goals.map(goal => goal.id));
-  const candidates = data.proposals.filter(proposal => aimIds.has(proposal.aim_id) && !archivedIds.has(proposal.id) && proposal.status !== 'superseded');
+  const candidates = data.proposals.filter(proposal => shown(proposal.aim_id) && !archivedIds.has(proposal.id) && proposal.status !== 'superseded');
   const layoutProposals = layout === 'columns'
     ? candidates.filter(proposal => proposal.status !== 'closed' || !filter.hideClosedProposals).filter(proposal => !proposal.accepted_goal_id || goalIds.has(proposal.accepted_goal_id))
     : [];
@@ -588,6 +649,7 @@ export function graphVisibility(data: Projection, archivedIds: Set<string>, filt
   return {
     // Undrawn Proposals without a Goal would only leave empty columns.
     aims, goals, proposals, layoutProposals: proposals.length ? layoutProposals : layoutProposals.filter(proposal => proposal.accepted_goal_id),
+    collapsed, collapsible,
     hidden: {
       aims: data.aims.filter(aim => !archivedIds.has(aim.id)).length - aims.length,
       goals: data.goals.filter(goal => !archivedIds.has(goal.id)).length - goals.length,
@@ -595,13 +657,18 @@ export function graphVisibility(data: Projection, archivedIds: Set<string>, filt
   };
 }
 
+export function CollapseToggle({ note, expanded, onToggle }: { note?: { aims: number; goals: number }; expanded: boolean; onToggle: () => void }) {
+  return <div className="collapse-note">{note && <small>접힘 · 하위 목표 {note.aims}개 · 과제 {note.goals}개</small>}<button type="button" className="nodrag nopan" onClick={event => { event.stopPropagation(); onToggle(); }}>{expanded ? '접기' : '펼치기'}</button></div>;
+}
+
 export function GraphFilterMenu({ filter, onChange, hidden }: { filter: GraphFilter; onChange: (filter: GraphFilter) => void; hidden: { aims: number; goals: number } }) {
-  const active = filter.hideDoneAims || filter.hideDoneGoals || filter.hideClosedProposals;
-  const option = (key: keyof GraphFilter, label: string) => <label className="check"><input type="checkbox" checked={filter[key]} onChange={event => onChange({ ...filter, [key]: event.target.checked })} />{label}</label>;
+  const active = filter.hideDoneAims || filter.hideDoneGoals || filter.hideClosedProposals || !!filter.collapseDoneAims;
+  const option = (key: keyof GraphFilter, label: string) => <label className="check"><input type="checkbox" checked={!!filter[key]} onChange={event => onChange({ ...filter, [key]: event.target.checked })} />{label}</label>;
   return <details className={`header-menu graph-filter${active ? ' active' : ''}`}><summary>표시 필터{active ? ` · 숨김 목표 ${hidden.aims} · 과제 ${hidden.goals}` : ''}</summary><div className="header-menu-content">
     {option('hideDoneAims', '달성·그만둔 목표 숨기기')}
     {option('hideDoneGoals', '검증·중단된 과제 숨기기')}
     {option('hideClosedProposals', '닫힌 접근안 숨기기')}
+    {option('collapseDoneAims', '달성된 목표의 하위 구조 접기')}
     <p className="tab-hint">이 PC 화면에서만 숨깁니다. 기록은 그대로이고, 목표 목록과 검색에서 계속 찾을 수 있습니다.</p>
     {active && <button type="button" className="quiet" onClick={() => onChange(NO_GRAPH_FILTER)}>모두 보이기</button>}
   </div></details>;

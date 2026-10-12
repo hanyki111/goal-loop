@@ -477,3 +477,5 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .react-flow__edgelabel-renderer{z-index:1001}
 
 .graph-node.aim>span,.graph-node.goal>span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.collapse-note{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:10px;color:#64748b}
+.collapse-note button{font-size:10px;padding:1px 6px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;cursor:pointer}

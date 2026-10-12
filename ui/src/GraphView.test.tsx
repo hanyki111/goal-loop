@@ -72,7 +72,7 @@ describe('graph controls in the workspace', () => {
   it('keeps dragged positions per layout', async () => {
     localStorage.setItem('goal-loop.workspace.id', 'preview');
     localStorage.setItem('goal-loop.graph.layout', 'list');
-    localStorage.setItem('goal-loop.graph.positions.v4.preview.list', JSON.stringify({ 'goal-1': { x: 777, y: 555 } }));
+    localStorage.setItem('goal-loop.graph.positions.v5.preview.list', JSON.stringify({ 'goal-1': { x: 777, y: 555 } }));
     render(<Workspace />);
     await waitFor(() => expect(document.querySelector('.react-flow__node[data-id="goal-1"]')?.getAttribute('style') ?? '').toContain('777'));
     fireEvent.change(screen.getByRole('combobox', { name: '그래프 배치' }), { target: { value: 'columns' } });
@@ -158,5 +158,74 @@ describe('connection colours', () => {
       expect(result.nodes.some(node => node.className?.includes('dimmed'))).toBe(false);
       expect(result.edges).toBe(drawn);
     }
+  });
+});
+
+// A wide journal: one parent Aim with many sub-Aims, and one Aim with many Proposals.
+const wideData = (() => {
+  const aims: Array<Record<string, unknown>> = [{ id: 'aim-1', description: '부모 목표', phase: 'open', paused: false, currently_achieved: false }];
+  const proposals: Array<Record<string, unknown>> = []; const goals: Array<ReturnType<typeof goal>> = [];
+  const nodes: Array<Record<string, unknown>> = [{ id: 'aim-1', kind: 'aim', label: '부모 목표', phase: 'open', aim_id: 'aim-1', dependency_blocked: false }];
+  for (let index = 2; index <= 13; index += 1) {
+    aims.push({ id: `aim-${index}`, parent_aim_id: 'aim-1', description: `하위 목표 ${index}`, phase: 'open', paused: false, currently_achieved: false });
+    nodes.push({ id: `aim-${index}`, kind: 'aim', label: `하위 목표 ${index}`, phase: 'open', aim_id: `aim-${index}`, dependency_blocked: false });
+  }
+  for (let index = 1; index <= 8; index += 1) {
+    proposals.push({ id: `proposal-${index}`, aim_id: 'aim-2', direction: `접근안 ${index}`, status: 'open', accepted_goal_id: null });
+  }
+  return { aims, proposals, goals, attempts: [], evidence: [], verdicts: [], aim_evaluations: [], schema_version: 16, nodes, edges: [] } as never;
+})();
+
+describe('wide graph layout', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => wideData })));
+    vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  });
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear(); });
+
+  const boxes = () => Array.from(document.querySelectorAll<HTMLElement>('.react-flow__node')).map(item => {
+    const [, x, y] = (item.getAttribute('style')?.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px/) ?? []).map(Number);
+    return { id: item.getAttribute('data-id') ?? '', x, y };
+  });
+
+  it('wraps sibling sub-Aims into rows, lays many Proposals out as a grid, and keeps nodes apart', async () => {
+    render(<Workspace />);
+    await waitFor(() => expect(boxes().length).toBe(21));
+    const all = boxes(); const children = all.filter(box => /^aim-(?:[3-9]|1\d)$/.test(box.id));
+    expect(new Set(children.map(box => box.y)).size).toBeGreaterThan(1);  // twelve sub-Aims no longer sit on one row
+    const proposals = all.filter(box => box.id.startsWith('proposal-'));
+    expect(new Set(proposals.map(box => box.x)).size).toBeLessThanOrEqual(4);  // at most four columns
+    expect(new Set(proposals.map(box => box.y)).size).toBeGreaterThan(1);
+    for (const [index, first] of all.entries()) for (const second of all.slice(index + 1)) {
+      expect(Math.abs(first.x - second.x) >= 220 || Math.abs(first.y - second.y) >= 120, `${first.id} overlaps ${second.id}`).toBe(true);
+    }
+  });
+});
+
+describe('collapsing finished Aims', () => {
+  const aim = (id: string, phase: string, parent?: string) => ({ id, description: id, phase, parent_aim_id: parent, paused: false, currently_achieved: phase === 'achieved' });
+  const tree = {
+    aims: [aim('aim-1', 'achieved'), aim('aim-2', 'achieved', 'aim-1'), aim('aim-3', 'achieved'), aim('aim-4', 'open', 'aim-3'), aim('aim-5', 'achieved')],
+    proposals: [{ id: 'proposal-1', aim_id: 'aim-2', direction: '접근', status: 'accepted', accepted_goal_id: 'goal-1' }],
+    goals: [goal('goal-1', 'aim-2', 'verified'), goal('goal-2', 'aim-4', 'active')],
+    edges: [],
+  } as never;
+  const collapse = { ...NO_GRAPH_FILTER, collapseDoneAims: true };
+
+  it('folds a finished subtree into its Aim, counts what it hides, and leaves running work alone', () => {
+    const view = graphVisibility(tree, none, collapse, true, 'columns');
+    expect(view.aims.map(item => item.id)).toEqual(['aim-1', 'aim-3', 'aim-4', 'aim-5']);  // aim-2 is folded into aim-1
+    expect(view.collapsed.get('aim-1')).toEqual({ aims: 1, goals: 1 });
+    expect(view.goals.map(item => item.id)).toEqual(['goal-2']);
+    expect(view.proposals).toEqual([]);
+    expect(view.collapsed.has('aim-3')).toBe(false);  // aim-4 is still open
+    expect(view.collapsible.has('aim-5')).toBe(false);  // nothing to fold
+    expect(view.hidden).toEqual({ aims: 1, goals: 1 });
+  });
+
+  it('opens a folded Aim again and shows everything when the filter is off', () => {
+    expect(graphVisibility(tree, none, collapse, true, 'columns', new Set(['aim-1'])).aims.map(item => item.id)).toContain('aim-2');
+    expect(graphVisibility(tree, none, NO_GRAPH_FILTER, true, 'columns').aims.length).toBe(5);
   });
 });
