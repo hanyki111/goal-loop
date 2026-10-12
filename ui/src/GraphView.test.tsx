@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
+import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
 
 const goal = (id: string, aim: string, phase: string) => ({ id, aim_id: aim, phase, target: `과제 ${id}`, responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} });
 const data = {
@@ -227,5 +227,17 @@ describe('collapsing finished Aims', () => {
   it('opens a folded Aim again and shows everything when the filter is off', () => {
     expect(graphVisibility(tree, none, collapse, true, 'columns', new Set(['aim-1'])).aims.map(item => item.id)).toContain('aim-2');
     expect(graphVisibility(tree, none, NO_GRAPH_FILTER, true, 'columns').aims.length).toBe(5);
+  });
+});
+
+describe('choosing a row width limit', () => {
+  const scale = (box: { width: number; height: number }) => Math.min(1000 / box.width, 800 / box.height);
+  it('prefers an arrangement within the width cap, then the larger zoom, and the narrowest when none fits', () => {
+    const wideButBigger = { width: 7000, height: 800 }; const narrow = { width: 6000, height: 8000 };
+    expect(scale(wideButBigger)).toBeGreaterThan(scale(narrow));
+    expect(betterArrangement(narrow, wideButBigger, scale, 6400)).toBe(true);   // inside the cap beats a larger zoom outside it
+    expect(betterArrangement(wideButBigger, narrow, scale, 6400)).toBe(false);
+    expect(betterArrangement({ width: 4000, height: 2500 }, narrow, scale, 6400)).toBe(true);   // both inside: larger zoom wins
+    expect(betterArrangement({ width: 7500, height: 2000 }, { width: 8000, height: 1500 }, scale, 6400)).toBe(true);   // none inside: narrower wins
   });
 });

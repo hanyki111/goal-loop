@@ -276,7 +276,7 @@ export function Workspace() {
     const layoutProposals = graph.layoutProposals;
     const LANE_GAP = 50; const SLOT = 240; const LEVEL_GAP = 90; const CELL_GAP = 30;
     // A row of sibling sub-Aims wraps at a width limit chosen below, and a lane with many Proposals becomes a grid of at most this many columns.
-    const ROW_WIDTH_CHOICES = [1200, 1800, 2400, 3600, 4800, 7200, 9600]; const MAX_GRID_COLS = 4;
+    const ROW_WIDTH_CHOICES = [1200, 1800, 2400, 3600, 4800, 7200, 9600]; const MAX_GRID_COLS = 4; const MAX_GRAPH_WIDTH = 6400;
     const showing = visibleProposals.length > 0;
     const BASE_Y = showing ? 200 : 215; const GOAL_DROP = showing ? 140 : 0;
     const GOAL_PITCH = 150; const GOAL_H = 135; const PROPOSAL_H = 120; const AIM_ONLY_H = 200;
@@ -341,7 +341,7 @@ export function Workspace() {
     const canvasWidth = canvasBox?.width || 1050; const canvasHeight = canvasBox?.height || 800;
     const fitScale = (box: { width: number; height: number }) => Math.min(canvasWidth / Math.max(box.width, 1), canvasHeight / Math.max(box.height, 1));
     let arranged = arrange(ROW_WIDTH_CHOICES[0]);
-    for (const limit of ROW_WIDTH_CHOICES.slice(1)) { const candidate = arrange(limit); if (fitScale(candidate) > fitScale(arranged) * 1.02) arranged = candidate; }
+    for (const limit of ROW_WIDTH_CHOICES.slice(1)) { const candidate = arrange(limit); if (betterArrangement(candidate, arranged, fitScale, MAX_GRAPH_WIDTH)) arranged = candidate; }
     const { aimPos, cellPos } = arranged;
     const position = (node: GraphNode) => {
       if (node.kind === 'aim') return aimPos.get(node.id) ?? { x: 0, y: 40 };
@@ -604,6 +604,14 @@ export function graphEdges(edges: Projection['edges'], proposals: Proposal[], ai
       ? [{ id: `accepted:${proposal.id}:${proposal.accepted_goal_id}`, source: proposal.id, target: proposal.accepted_goal_id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-accepted', style: { stroke: EDGE_COLORS.accepted } }] : []),
   ]);
   return [...recorded, ...viaProposals];
+}
+
+// Stay within the width cap when any row limit can; among those, keep the arrangement that fits the canvas at the largest zoom.
+export function betterArrangement(candidate: { width: number; height: number }, current: { width: number; height: number }, scale: (box: { width: number; height: number }) => number, widthCap: number) {
+  const candidateFits = candidate.width <= widthCap; const currentFits = current.width <= widthCap;
+  if (candidateFits !== currentFits) return candidateFits;
+  if (!candidateFits) return candidate.width < current.width;
+  return scale(candidate) > scale(current) * 1.02;
 }
 
 export type GraphLayout = 'columns' | 'list';
