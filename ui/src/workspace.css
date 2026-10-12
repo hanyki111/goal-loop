@@ -475,3 +475,5 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .follow-chain span{display:inline-flex;align-items:baseline;white-space:nowrap}
 .follow-chain .relation-link{display:inline;margin:0;padding:0 2px}
 .react-flow__edgelabel-renderer{z-index:1001}
+
+.graph-node.aim>span,.graph-node.goal>span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
