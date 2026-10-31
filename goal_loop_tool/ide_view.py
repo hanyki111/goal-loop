@@ -20,6 +20,8 @@ PHASE_COLORS = {"verified": ("#f6fef9", "#bbf7d0", "#dcfce7", "#166534"), "achie
                 "abandoned": ("#f8fafc", "#cbd5e1", "#e2e8f0", "#475569")}
 SETTLED = {"verified", "stopped", "abandoned"}
 ROW, CARD_H, WIDTH, ARC_SPACE = 52, 42, 1180, 150
+# Korean-capable fonts on Windows, macOS and Linux, in that order; the first one installed is used.
+FONTS = '"Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", "DejaVu Sans", sans-serif'
 
 
 def _number(record_id: str) -> int:
@@ -152,7 +154,7 @@ def render_svg(projection: dict, expand_all: bool = False) -> str:
     markers = "".join(f"<marker id='arrow-{kind}' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'><path d='M0,0 L8,4 L0,8Z' fill='{color}'/></marker>"
                       for kind, (color, _, _) in styles.items())
     return (f"<svg xmlns='http://www.w3.org/2000/svg' width='{WIDTH}' height='{height}' viewBox='0 0 {WIDTH} {height}' "
-            f"font-family='Segoe UI, Malgun Gothic, Apple SD Gothic Neo, sans-serif'><defs>{markers}</defs>"
+            f"font-family='{FONTS}'><defs>{markers}</defs>"
             f"<rect width='100%' height='100%' fill='#ffffff'/>{''.join(parts)}</svg>\n")
 
 
@@ -173,8 +175,9 @@ def render_markdown(projection: dict, svg_name: str, database: str, expand_all: 
         f"생성 시각 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} · 저널 `{database}` · 읽기 전용입니다. "
         "기록을 바꾸는 작업은 CLI나 데스크톱 앱에서 합니다.",
         "",
-        "> 미리보기: VS Code에서 이 파일을 연 상태로 `Ctrl+Shift+V`(옆에 열기는 `Ctrl+K V`)를 누릅니다. "
-        f"`goal-loop ide-view --watch`를 켜 두면 저널이 바뀔 때 다시 생성되어 미리보기가 갱신됩니다. 그림만 보려면 `{svg_name}` 파일을 엽니다.",
+        "> 미리보기: VS Code에서 이 파일을 연 상태로 `Ctrl+Shift+V`(macOS는 `Cmd+Shift+V`, 옆에 열기는 `Ctrl+K V`)를 누릅니다. "
+        "`goal-loop ide-view --watch`(실행 파일이 없으면 `python3 -m goal_loop_tool persistent ide-view --watch`)를 켜 두면 "
+        f"저널이 바뀔 때 다시 생성되어 미리보기가 갱신됩니다. 그림만 보려면 `{svg_name}` 파일을 엽니다.",
         "",
         "범례: 회색 선은 상위→하위(목표·과제), 초록 점선은 이어받음, 주황 점선은 선행 과제입니다. 카드에 마우스를 올리면 전체 문구가 보입니다(SVG를 직접 열었을 때).",
         "",

@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -39,6 +41,17 @@ class IdeViewTests(unittest.TestCase):
             self.assertIn("![Goal Loop 그래프](graph.svg)", markdown)
             self.assertIn(r"First \| task", markdown)
             self.assertTrue(Path(paths["svg"]).read_text(encoding="utf-8").startswith("<svg"))
+
+    def test_module_entry_point_writes_files_without_an_installed_executable(self):
+        # Linux/macOS checkouts may only have Python; `python -m goal_loop_tool persistent` must be enough.
+        with TemporaryDirectory() as directory:
+            database, view = Path(directory) / "journal.sqlite3", Path(directory) / "view"
+            command = [sys.executable, "-m", "goal_loop_tool", "persistent", "--database", str(database)]
+            subprocess.run([*command, "aim-create", "Portable viewer"], check=True, capture_output=True)
+            result = subprocess.run([*command, "ide-view", "--out", str(view)], check=True, capture_output=True, text=True, encoding="utf-8")
+            self.assertIn("ide_view", result.stdout)
+            self.assertIn("Portable viewer", (view / "graph.svg").read_text(encoding="utf-8"))
+            self.assertIn("Noto Sans CJK KR", (view / "graph.svg").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
