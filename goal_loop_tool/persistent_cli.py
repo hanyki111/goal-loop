@@ -32,6 +32,7 @@ from .repository import SqliteEventRepository
 from .outbox_runtime import RuntimeOutboxWorker
 from .runtime_profiles import RuntimePayloadError, execute_profile_request
 from .graph_view import export_goal_graph
+from .ide_view import watch_ide_view, write_ide_view
 from .ui_projection import goal_graph_projection
 from . import memory_view
 from .service import PROPOSAL_CLOSURE_KINDS, ContractDraft, GoalLoopError
@@ -255,6 +256,7 @@ _COMMAND_HELP = {
     ),
     "goal-graph": ("Goal parent-child, Goal dependency, 이어받음(follows) 관계를 읽기 전용 JSON으로 봅니다.", "goal-graph"),
     "graph-export": ("Goal graph projection을 서버 없이 열 수 있는 로컬 HTML 파일로 export합니다.", "graph-export .\\goal-graph.html"),
+    "ide-view": ("IDE의 기본 Markdown·SVG 미리보기로 볼 수 있는 graph.md와 graph.svg를 저널 폴더의 view에 만듭니다. --watch는 저널이 바뀔 때마다 다시 만듭니다.", "ide-view --watch"),
     "guide": (
         "AI 없이 CLI만으로 Aim부터 review/recovery까지 진행하는 단계별 한국어 안내를 봅니다.",
         "guide",
@@ -1425,6 +1427,10 @@ def main(argv: list[str] | None = None) -> None:
     memory_draft.add_argument("--limit", type=int, default=10)
     graph_export = sub.add_parser("graph-export", help="Export the read-only Goal graph as a local HTML file")
     graph_export.add_argument("destination", type=Path)
+    ide_view = sub.add_parser("ide-view", help="Write graph.md and graph.svg that an IDE's built-in Markdown/SVG preview shows (read-only)")
+    ide_view.add_argument("--out", type=Path, help="folder for graph.md and graph.svg (default: the journal's folder/view)")
+    ide_view.add_argument("--all", action="store_true", help="expand achieved Aims instead of folding them")
+    ide_view.add_argument("--watch", action="store_true", help="keep running and rewrite the files whenever the journal changes")
     sub.add_parser("runtime-requests", help="List pending durable Runtime requests without claiming or executing them")
     runtime_request = sub.add_parser("runtime-request", help="Read one Runtime request regardless of its delivery state")
     runtime_request.add_argument("request_id")
@@ -1614,6 +1620,14 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "guide":
         _show_guide(args.database)
+        return
+    if args.command == "ide-view":
+        destination = args.out or Path(args.database).parent / "view"
+        build = lambda: goal_graph_projection(PersistentGoalLoop(SqliteEventRepository(args.database)), project_root=project_root_for(args.database))
+        if args.watch:
+            watch_ide_view(build, destination, Path(args.database), args.all, emit=_emit)
+        else:
+            _emit({"ide_view": write_ide_view(build(), destination, str(args.database), args.all)})
         return
     repo = SqliteEventRepository(args.database)
     if args.command == "guided":
