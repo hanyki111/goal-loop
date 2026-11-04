@@ -339,7 +339,7 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 
 .proposal-inspector h2{overflow-wrap:anywhere}
 .proposal-body{white-space:pre-wrap;overflow-wrap:anywhere;margin:calc(8px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));padding:calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#334155;font-size:calc(13px * var(--ui-scale));line-height:1.55}
-.graph-node.proposal span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.graph-node.proposal span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:break-word}
 .observation-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .verdict-reason{margin:calc(6px * var(--ui-scale)) 0;font-size:calc(12px * var(--ui-scale));line-height:1.5;color:#334155}
 /* Evidence and verdict records fold like attempt cards; the summary keeps a one-line preview. */
@@ -476,6 +476,10 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .follow-chain .relation-link{display:inline;margin:0;padding:0 2px}
 .react-flow__edgelabel-renderer{z-index:1001}
 
-.graph-node.aim>span,.graph-node.goal>span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+/* Korean wraps between words; only a word wider than the card (a long path) breaks inside. */
+.graph-node.aim>span,.graph-node.goal>span{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;word-break:keep-all;overflow-wrap:break-word}
 .collapse-note{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:10px;color:#64748b}
 .collapse-note button{font-size:10px;padding:1px 6px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;cursor:pointer}
+
+/* Below 1100px the page scrolls instead of the grid, so a long Aim list or inspector would stretch the row and the graph with it; keep the side panels within one screen. */
+@media(min-width:761px) and (max-width:1100px){.workspace-grid>.aim-navigator,.workspace-grid>.inspector{max-height:calc(100vh - 36px)}}

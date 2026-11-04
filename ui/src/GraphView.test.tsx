@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
+import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, startMinZoom, fitDue, FIT_FLOOR, READABLE_START, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
 
 const goal = (id: string, aim: string, phase: string) => ({ id, aim_id: aim, phase, target: `과제 ${id}`, responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} });
 const data = {
@@ -239,5 +239,23 @@ describe('choosing a row width limit', () => {
     expect(betterArrangement(wideButBigger, narrow, scale, 6400)).toBe(false);
     expect(betterArrangement({ width: 4000, height: 2500 }, narrow, scale, 6400)).toBe(true);   // both inside: larger zoom wins
     expect(betterArrangement({ width: 7500, height: 2000 }, { width: 8000, height: 1500 }, scale, 6400)).toBe(true);   // none inside: narrower wins
+  });
+});
+
+describe('choosing the opening zoom', () => {
+  it('waits for the data of the switched project before fitting', () => {
+    expect(fitDue(true, 'journal-a', 'journal-b')).toBe(false);   // the switch re-renders with the previous project's data
+    expect(fitDue(true, 'journal-b', 'journal-b')).toBe(true);
+    expect(fitDue(false, 'journal-b', 'journal-b')).toBe(false);   // focus reloads keep the current view
+    expect(fitDue(true, undefined, null)).toBe(false);   // nothing loaded yet
+    expect(fitDue(true, null, null)).toBe(true);   // browser preview
+  });
+
+  it('opens a small graph whole and a large one at a readable zoom', () => {
+    const canvas = { width: 790, height: 330 };
+    expect(startMinZoom({ width: 1200, height: 1300 }, canvas)).toBe(FIT_FLOOR);   // guildmaster-sized: whole at about 0.22
+    expect(startMinZoom({ width: 6400, height: 3000 }, canvas)).toBe(READABLE_START);   // whole would need about 0.1
+    expect(startMinZoom({ width: 3500, height: 1000 }, canvas)).toBe(FIT_FLOOR);   // fitView shows this whole at about 0.209
+    expect(startMinZoom({ width: 3800, height: 1000 }, canvas)).toBe(READABLE_START);   // about 0.192, just below the floor
   });
 });
