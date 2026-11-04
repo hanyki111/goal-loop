@@ -571,26 +571,6 @@ no server or dependency and shows each Goal's Aim, phase, parent, and required p
 Parent links are blue; dependency links are orange dashed lines; a red node has an unmet Goal
 dependency. Hover a node for its Aim and current dependency status.
 
-To see the graph inside an IDE without any extension, run `goal-loop ide-view`. It writes
-`graph.md` and `graph.svg` to the journal folder's `view` (for this project `.goal-loop/view/`; `--out`
-chooses another folder). Open `graph.md` and press `Ctrl+Shift+V` in VS Code (or open `graph.svg`) to
-see the Aim/Goal outline with each phase, follow links (green dotted), and dependencies (orange dashed),
-followed by the Goals in progress and each Aim's Goals. Achieved Aims are folded; `--all` expands them.
-`ide-view --watch` keeps running and rewrites both files when the journal changes, so an open preview
-updates. The files are read-only snapshots; record changes through the CLI or the desktop app.
-
-`ide-view` is plain Python with no dependency, so it works the same on Linux and macOS. Where the
-`goal-loop` executable is not available (for example a Windows `.venv\Scripts\goal-loop.exe` seen from
-Linux), run it from the repository root, or with the repository on `PYTHONPATH`:
-
-```bash
-python3 -m goal_loop_tool persistent ide-view --watch
-python3 -m goal_loop_tool persistent --database path/to/.goal-loop/journal.sqlite3 ide-view --out path/to/view
-```
-
-The SVG names Korean-capable fonts for Windows, macOS, and Linux (Noto Sans CJK KR, NanumGothic); on a
-Linux machine without one of them, install `fonts-noto-cjk` or `fonts-nanum` so Korean text renders.
-
 A failed Attempt is not a failed Goal. Before starting the same Contract again, record and
 consume one retry Decision; this preserves why the retry is valid:
 
