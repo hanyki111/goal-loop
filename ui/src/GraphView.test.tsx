@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, startMinZoom, fitDue, FIT_FLOOR, READABLE_START, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
+import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, startMinZoom, fitDue, routeDependencies, emphasizeConnected, FIT_FLOOR, READABLE_START, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
 
 const goal = (id: string, aim: string, phase: string) => ({ id, aim_id: aim, phase, target: `과제 ${id}`, responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} });
 const data = {
@@ -239,6 +239,27 @@ describe('choosing a row width limit', () => {
     expect(betterArrangement(wideButBigger, narrow, scale, 6400)).toBe(false);
     expect(betterArrangement({ width: 4000, height: 2500 }, narrow, scale, 6400)).toBe(true);   // both inside: larger zoom wins
     expect(betterArrangement({ width: 7500, height: 2000 }, { width: 8000, height: 1500 }, scale, 6400)).toBe(true);   // none inside: narrower wins
+  });
+});
+
+describe('quieting parent and dependency lines', () => {
+  const card = (id: string, x: number, y: number) => ({ id, position: { x, y }, data: {}, measured: { width: 200, height: 100 } });
+  const dependency = (source: string, target: string) => ({ id: `dependency:${source}:${target}`, source, target, className: 'edge-dependency', sourceHandle: 'out', targetHandle: 'in' });
+
+  it('joins neighbours in a row side to side and keeps the top/bottom route otherwise', () => {
+    const nodes = [card('a', 0, 0), card('b', 240, 0), card('c', 480, 0), card('d', 240, 300), card('e', 720, 400)];
+    const routed = routeDependencies([dependency('a', 'b'), dependency('a', 'c'), dependency('c', 'b'), dependency('a', 'd'), { ...dependency('a', 'b'), id: 'p', className: 'edge-parent' }], nodes);
+    expect(routed[0]).toMatchObject({ sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { color: EDGE_COLORS.dependency } });
+    for (const edge of routed.slice(1)) expect(edge).toMatchObject({ sourceHandle: 'out', targetHandle: 'in' });   // b is between, against the arrow, another row, not a dependency
+  });
+
+  it('brings forward only the parent and dependency lines of the selected card', () => {
+    const edges = [{ ...dependency('a', 'b'), animated: false }, { ...dependency('b', 'c'), animated: false, className: 'edge-dependency dimmed' }, { ...dependency('a', 'c'), animated: false }, { id: 'p', source: 'd', target: 'b', className: 'edge-parent', animated: false }, { id: 'g', source: 'x', target: 'b', className: 'edge-accepted' }];
+    expect(emphasizeConnected(edges, undefined)).toBe(edges);
+    const shown = emphasizeConnected(edges, 'b');
+    expect(shown.filter(edge => edge.className?.includes('is-connected')).map(edge => edge.id)).toEqual(['dependency:a:b', 'dependency:b:c', 'p']);
+    expect(shown[1].className).not.toContain('dimmed');   // a follow flow dims the rest, but not the lines of this card
+    expect(shown.map(edge => edge.animated)).toEqual([true, true, false, false, undefined]);
   });
 });
 

@@ -459,7 +459,8 @@ export function Workspace() {
   const reviewCount = visibleActions.filter(action => action.kind.startsWith('resolve_')).length;
   const contextAimId = selectedAim?.id ?? activeGoal?.aim_id ?? selectedProposal?.aim_id;
   const selectedNodeId = selection?.kind === 'aim' || selection?.kind === 'goal' ? selection.id : selection?.kind === 'attempt' ? activeGoal?.id : selection?.kind === 'proposal' ? (showProposals ? selectedProposal?.id : selectedProposal?.aim_id) : undefined;
-  const { nodes: displayNodes, edges: displayEdges } = highlightFlow(flowNodes, flowEdges, data?.edges ?? [], selectedNodeId);
+  const highlighted = highlightFlow(flowNodes, routeDependencies(flowEdges, flowNodes), data?.edges ?? [], selectedNodeId);
+  const displayNodes = highlighted.nodes; const displayEdges = emphasizeConnected(highlighted.edges, selectedNodeId);
   // Reset and the refresh button fit the graph again; focus reloads and reloads after a command keep the current view.
   const resetLayout = () => { try { localStorage.removeItem(positionsKey); } catch { /* no storage */ } refit.current = true; void load(); };
   const beginAim = () => { setView('workspace'); setSelection(null); setComposer('aim'); };
@@ -474,7 +475,7 @@ export function Workspace() {
     {view === 'workspace' && <div className="workspace-grid" style={{ '--left-pane': `${paneWidths.left}px`, '--right-pane': `${paneWidths.right}px` } as React.CSSProperties}>
       <AimNavigator aims={visibleData.aims} goals={visibleData.goals} selected={contextAimId ? { kind: 'aim', id: contextAimId } : null} onSelect={selectRecord} onCreate={beginAim} hidden={[...data.aims.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `목표 · ${item.description}` })), ...data.proposals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `접근안 · ${proposalTitle(item.direction)}` })), ...data.goals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `과제 · ${item.target}` }))]} onRestore={restore} />
       <PaneSplitter side="left" value={paneWidths.left} onChange={left => setPaneWidths(current => ({ ...current, left }))} />
-      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 오른쪽에 상세가 열립니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} /><span>{legendLine('aim')}목표 연결</span>{showProposals && graphLayout === 'columns' && <span>{legendLine('accepted')}과제로 확정</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={displayEdges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} nodesConnectable={false} onInit={instance => { refit.current = true; setFlowInstance(instance); }} minZoom={0.05} fitView fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1, minZoom: READABLE_START }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls fitViewOptions={{ padding: 0.05, maxZoom: 1.1, minZoom: 0.05 }} /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
+      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 상세가 열리고 그 항목의 연결선이 진해집니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} /><span>{legendLine('aim')}목표 연결</span>{showProposals && graphLayout === 'columns' && <span>{legendLine('accepted')}과제로 확정</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={displayEdges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} nodesConnectable={false} onInit={instance => { refit.current = true; setFlowInstance(instance); }} minZoom={0.05} fitView fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1, minZoom: READABLE_START }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls fitViewOptions={{ padding: 0.05, maxZoom: 1.1, minZoom: 0.05 }} /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
       <PaneSplitter side="right" value={paneWidths.right} onChange={right => setPaneWidths(current => ({ ...current, right }))} />
       <aside className="inspector">{error && <ErrorNotice raw={error} onClose={() => setError('')} />}<Inspector ao={aoStatus} onCreateAim={beginAim} onRetry={retryNow} hiddenIds={archivedIds} onRestore={restore} aim={selectedAim} proposal={selectedProposal} goal={activeGoal} attempt={selectedAttempt} data={data} activity={activity} admission={admission} busy={busy} onSelect={selectRecord} submit={submit} run={run} onArchive={archive} focus={selection?.focus} actions={scopedActions} allActions={visibleActions} onOpenInbox={() => setView('inbox')} composer={composer} onCancelComposer={() => setComposer(null)} /></aside>
     </div>}
@@ -601,13 +602,38 @@ export function graphEdges(edges: Projection['edges'], proposals: Proposal[], ai
     .map(edge => edge.kind === 'follows'
       // A follow link runs side to side (earlier task's right → later task's left) with an arrow, apart from the top/bottom structure lines.
       ? { ...edge, type: 'follows', animated: false, className: 'edge-follows', sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLORS.follows, width: 18, height: 18 }, style: { stroke: EDGE_COLORS.follows, strokeWidth: 3 }, data: { reason: edge.reason }, ariaLabel: `이어받음: ${edge.reason ?? ''}` }
-      : { ...edge, animated: edge.kind === 'dependency', className: `edge-${edge.kind}`, sourceHandle: 'out', targetHandle: 'in', style: { stroke: edgeColor(edge.kind) } });
+      : { ...edge, animated: false, className: `edge-${edge.kind}`, sourceHandle: 'out', targetHandle: 'in', style: { stroke: edgeColor(edge.kind) } });
   const viaProposals = proposals.flatMap(proposal => [
     { id: `proposal:${proposal.aim_id}:${proposal.id}`, source: proposal.aim_id, target: proposal.id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-proposal', style: { stroke: EDGE_COLORS.proposal } },
     ...(proposal.accepted_goal_id && goalIds.has(proposal.accepted_goal_id)
       ? [{ id: `accepted:${proposal.id}:${proposal.accepted_goal_id}`, source: proposal.id, target: proposal.accepted_goal_id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-accepted', style: { stroke: EDGE_COLORS.accepted } }] : []),
   ]);
   return [...recorded, ...viaProposals];
+}
+
+// A dependency between neighbours in a row runs side to side with an arrow; going under one card and over the next
+// loops around them. Another card between them, or a card order against the arrow, keeps the top/bottom route.
+export function routeDependencies(edges: Edge[], nodes: Node[]): Edge[] {
+  const box = (node: Node) => { const width = node.measured?.width ?? 200; const height = node.measured?.height ?? 110; return { left: node.position.x, right: node.position.x + width, top: node.position.y, bottom: node.position.y + height, middle: node.position.y + height / 2 }; };
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  return edges.map(edge => {
+    if (!edge.className?.includes('edge-dependency')) return edge;
+    const source = byId.get(edge.source); const target = byId.get(edge.target);
+    if (!source || !target) return edge;
+    const from = box(source); const to = box(target);
+    if (from.right > to.left || to.middle < from.top || to.middle > from.bottom) return edge;
+    const blocked = nodes.some(node => { if (node === source || node === target) return false; const other = box(node); return other.right > from.right && other.left < to.left && other.top < from.middle && other.bottom > from.middle; });
+    return blocked ? edge : { ...edge, sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLORS.dependency, width: 16, height: 16 } };
+  });
+}
+
+// Parent and dependency lines stay faint so the structure reads first; the selected card's own lines come forward.
+export function emphasizeConnected(edges: Edge[], selectedNodeId?: string): Edge[] {
+  if (!selectedNodeId) return edges;
+  return edges.map(edge => {
+    if ((edge.source !== selectedNodeId && edge.target !== selectedNodeId) || !/edge-(parent|dependency)/.test(edge.className ?? '')) return edge;
+    return { ...edge, className: `${(edge.className ?? '').replace('dimmed', '').trim()} is-connected`, animated: edge.className?.includes('edge-dependency') ?? false, zIndex: 10 };
+  });
 }
 
 // A fit waits for the current project's data; the previous project's data must not use it up.

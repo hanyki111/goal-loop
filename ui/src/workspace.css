@@ -468,6 +468,9 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .graph-node.dimmed{opacity:.28}
 .graph-node.in-flow:not(.is-selected){border-color:#14b8a6!important;box-shadow:0 0 0 2px #99f6e4!important}
 .react-flow__edge.dimmed{opacity:.2}
+/* Parent and dependency lines stay faint until their card is selected. */
+.react-flow__edge.edge-parent path,.react-flow__edge.edge-dependency path{opacity:.4}
+.react-flow__edge.is-connected path{opacity:1;stroke-width:3}
 .react-flow__edge.edge-follows.in-flow path{stroke-width:4}
 .follow-reason{position:absolute;z-index:1001;max-width:220px;padding:4px 8px;border:1px solid #5eead4;border-radius:6px;background:#f0fdfa;color:#0f766e;font-size:11px;line-height:1.35;box-shadow:0 2px 6px #0f766e26;pointer-events:none}
 .follow-chain{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px;margin:0 0 calc(8px * var(--ui-scale));font-size:calc(12px * var(--ui-scale));color:#0f766e}
