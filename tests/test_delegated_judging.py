@@ -1,5 +1,5 @@
 from contextlib import chdir, redirect_stdout
-from io import StringIO
+from io import BytesIO, StringIO, TextIOWrapper
 import json
 import os
 from pathlib import Path
@@ -431,3 +431,14 @@ class ConsoleScriptTests(unittest.TestCase):
         with redirect_stdout(output), self.assertRaises(SystemExit):
             judge_main(["--help"])
         self.assertTrue(output.getvalue().startswith("usage: goal-loop-judge "))
+
+    def test_result_prints_as_utf8_when_stdout_cannot_encode_it(self):
+        # Redirected output on Korean Windows defaults to cp949; the Verdict is already recorded when this prints.
+        from goal_loop_tool.delegated_judging import main as judge_main
+        raw = BytesIO()
+        stdout = TextIOWrapper(raw, encoding="cp949")
+        result = {"reason": "판단 — 충족"}
+        with patch("goal_loop_tool.delegated_judging.judge_goal", return_value=result), patch("goal_loop_tool.delegated_judging.runner_for"), patch("sys.stdout", stdout):
+            judge_main(["--database", "journal.sqlite3", "goal", "goal-1"])
+            stdout.flush()
+        self.assertEqual(json.loads(raw.getvalue().decode("utf-8")), result)
