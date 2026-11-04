@@ -84,6 +84,7 @@ describe('record search', () => {
   it('opens the searched record from another screen and labels graph nodes with their IDs', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => data })));
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+    localStorage.setItem('goal-loop.graph.show-proposals.v2', 'true');
     render(<Workspace />);
     const field = await screen.findByRole('searchbox', { name: 'ID나 제목으로 찾기' });
     await waitFor(() => expect(document.querySelectorAll('.node-id').length).toBeGreaterThan(0));

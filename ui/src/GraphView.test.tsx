@@ -59,14 +59,29 @@ describe('graph controls in the workspace', () => {
   it('separates the layout choice from showing Proposals and remembers it on this PC', async () => {
     render(<Workspace />);
     const layout = await screen.findByRole('combobox', { name: '그래프 배치' }) as HTMLSelectElement;
-    await waitFor(() => expect(nodeIds()).toContain('proposal-1'));
+    await waitFor(() => expect(nodeIds()).toContain('goal-1'));
+    expect(nodeIds()).not.toContain('proposal-1');   // off until asked for
     const toggle = screen.getByRole('checkbox', { name: '접근안 표시' }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
     fireEvent.click(toggle);
-    await waitFor(() => expect(nodeIds()).not.toContain('proposal-1'));
+    await waitFor(() => expect(nodeIds()).toContain('proposal-1'));
+    expect(localStorage.getItem('goal-loop.graph.show-proposals.v2')).toBe('true');
     expect(layout.value).toBe('columns');
     fireEvent.change(layout, { target: { value: 'list' } });
     await waitFor(() => expect((screen.getByRole('checkbox', { name: '접근안 표시' }) as HTMLInputElement).disabled).toBe(true));
     expect(localStorage.getItem('goal-loop.graph.layout')).toBe('list');
+  });
+
+  it('ignores the old stored default and keeps a choice made in the new one', async () => {
+    localStorage.setItem('goal-loop.graph.show-proposals', 'true');   // earlier versions stored this at every start
+    const first = render(<Workspace />);
+    await waitFor(() => expect(nodeIds()).toContain('goal-1'));
+    expect(nodeIds()).not.toContain('proposal-1');
+    fireEvent.click(screen.getByRole('checkbox', { name: '접근안 표시' }));
+    await waitFor(() => expect(nodeIds()).toContain('proposal-1'));
+    first.unmount();
+    render(<Workspace />);
+    await waitFor(() => expect(nodeIds()).toContain('proposal-1'));
   });
 
   it('keeps dragged positions per layout', async () => {
@@ -106,6 +121,7 @@ describe('connection colours', () => {
   it('gives each connection kind its own colour and draws the legend and the edges in that colour', async () => {
     const kinds = ['aim', 'accepted', 'aim-parent', 'parent', 'dependency', 'follows'] as const;
     expect(new Set(kinds.map(kind => EDGE_COLORS[kind])).size).toBe(kinds.length);
+    localStorage.setItem('goal-loop.graph.show-proposals.v2', 'true');   // the accepted line exists only with Proposals shown
     render(<Workspace />);
     await screen.findByRole('combobox', { name: '그래프 배치' });
     const toRgb = (hex: string) => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; };
@@ -190,6 +206,7 @@ describe('wide graph layout', () => {
   });
 
   it('wraps sibling sub-Aims into rows, lays many Proposals out as a grid, and keeps nodes apart', async () => {
+    localStorage.setItem('goal-loop.graph.show-proposals.v2', 'true');
     render(<Workspace />);
     await waitFor(() => expect(boxes().length).toBe(21));
     const all = boxes(); const children = all.filter(box => /^aim-(?:[3-9]|1\d)$/.test(box.id));
@@ -239,6 +256,33 @@ describe('choosing a row width limit', () => {
     expect(betterArrangement(wideButBigger, narrow, scale, 6400)).toBe(false);
     expect(betterArrangement({ width: 4000, height: 2500 }, narrow, scale, 6400)).toBe(true);   // both inside: larger zoom wins
     expect(betterArrangement({ width: 7500, height: 2000 }, { width: 8000, height: 1500 }, scale, 6400)).toBe(true);   // none inside: narrower wins
+  });
+});
+
+describe('giving a sub-task one line in', () => {
+  const edges = [
+    { id: 'aim:a:g1', source: 'a', target: 'g1', kind: 'aim' }, { id: 'aim:a:g2', source: 'a', target: 'g2', kind: 'aim' },
+    { id: 'parent:g1:g2', source: 'g1', target: 'g2', kind: 'parent' },
+  ];
+  const proposals = [{ id: 'p1', aim_id: 'a', accepted_goal_id: 'g1' }, { id: 'p2', aim_id: 'a', accepted_goal_id: 'g2' }] as never[];
+  const lines = (drawn: Array<{ source: string; target: string }>) => drawn.map(edge => `${edge.source}>${edge.target}`).sort();
+
+  it('hangs a sub-task from its parent task and not from the Aim as well', () => {
+    expect(lines(graphEdges(edges, [], new Set(['a']), new Set(['g1', 'g2']), new Set()))).toEqual(['a>g1', 'g1>g2']);
+  });
+
+  it('runs parent task, Proposal, sub-task when Proposals are shown', () => {
+    const drawn = graphEdges(edges, proposals, new Set(['a']), new Set(['g1', 'g2']), new Set(['g1', 'g2']));
+    expect(lines(drawn)).toEqual(['a>p1', 'g1>p2', 'p1>g1', 'p2>g2']);
+    expect(drawn.find(edge => edge.target === 'p2')?.className).toBe('edge-parent');
+    // Selecting the sub-task brings forward the parent line that ends at its Proposal.
+    const shown = emphasizeConnected(drawn as never, 'g2');
+    expect(shown.find(edge => edge.target === 'p2')?.className).toContain('is-connected');
+    expect(shown.find(edge => edge.target === 'p1')?.className).not.toContain('is-connected');
+  });
+
+  it('keeps the Aim line when the parent task is not shown', () => {
+    expect(lines(graphEdges(edges, [], new Set(['a']), new Set(['g2']), new Set()))).toEqual(['a>g2']);
   });
 });
 

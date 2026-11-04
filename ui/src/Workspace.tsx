@@ -169,8 +169,8 @@ export function Workspace() {
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
   const dragOrigin = useRef<{ x: number; y: number } | null>(null);
-  const [showProposals, setShowProposals] = useState(() => { try { return localStorage.getItem('goal-loop.graph.show-proposals') !== 'false'; } catch { return true; } });
-  useEffect(() => { try { localStorage.setItem('goal-loop.graph.show-proposals', String(showProposals)); } catch { /* optional preference */ } }, [showProposals]);
+  const [showProposals, setShowProposals] = useState(() => { try { return localStorage.getItem(SHOW_PROPOSALS_KEY) === 'true'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(SHOW_PROPOSALS_KEY, String(showProposals)); } catch { /* optional preference */ } }, [showProposals]);
   const [graphLayout, setGraphLayout] = useState<GraphLayout>(() => { try { return localStorage.getItem('goal-loop.graph.layout') === 'list' ? 'list' : 'columns'; } catch { return 'columns'; } });
   useEffect(() => { try { localStorage.setItem('goal-loop.graph.layout', graphLayout); } catch { /* optional preference */ } }, [graphLayout]);
   const [graphFilter, setGraphFilter] = useState<GraphFilter>(() => { try { return { ...NO_GRAPH_FILTER, ...JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}') }; } catch { return NO_GRAPH_FILTER; } });
@@ -542,6 +542,8 @@ export function RecordSearch({ data, hiddenIds, onPick }: { data: Projection; hi
 }
 
 // One colour family per connection kind. Edges and the legend both read this table, so they cannot drift apart.
+// A new key: earlier versions stored their old default (on) at every start, so that value says nothing about a choice.
+const SHOW_PROPOSALS_KEY = 'goal-loop.graph.show-proposals.v2';
 export const EDGE_COLORS = { aim: '#a78bfa', proposal: '#a78bfa', accepted: '#10b981', 'aim-parent': '#475569', parent: '#3b82f6', dependency: '#f59e0b', follows: '#14b8a6' } as const;
 const edgeColor = (kind: string) => (EDGE_COLORS as Record<string, string>)[kind] ?? '#94a3b8';
 const legendLine = (kind: keyof typeof EDGE_COLORS) => <i className={`legend-line ${kind}`} style={{ borderTopColor: EDGE_COLORS[kind] }} />;
@@ -598,13 +600,17 @@ export function FollowNotes({ edges, goalId }: { edges: Projection['edges']; goa
 // Proposal is drawn. Each edge carries its colour from EDGE_COLORS.
 export function graphEdges(edges: Projection['edges'], proposals: Proposal[], aimIds: Set<string>, goalIds: Set<string>, drawnGoalProposal: Set<string>) {
   const shown = (id: string) => aimIds.has(id) || goalIds.has(id);
-  const recorded = edges.filter(edge => !(edge.kind === 'aim' && drawnGoalProposal.has(edge.target)) && shown(edge.source) && shown(edge.target))
+  // A sub-task hangs from its parent task alone: a second line from the Aim would repeat what the parent's own line already says.
+  const parentOf = new Map(edges.filter(edge => edge.kind === 'parent' && shown(edge.source) && shown(edge.target)).map(edge => [edge.target, edge.source]));
+  const recorded = edges.filter(edge => !(edge.kind === 'aim' && (drawnGoalProposal.has(edge.target) || parentOf.has(edge.target))) && !(edge.kind === 'parent' && drawnGoalProposal.has(edge.target)) && shown(edge.source) && shown(edge.target))
     .map(edge => edge.kind === 'follows'
       // A follow link runs side to side (earlier task's right → later task's left) with an arrow, apart from the top/bottom structure lines.
       ? { ...edge, type: 'follows', animated: false, className: 'edge-follows', sourceHandle: 'follow-out', targetHandle: 'follow-in', markerEnd: { type: MarkerType.ArrowClosed, color: EDGE_COLORS.follows, width: 18, height: 18 }, style: { stroke: EDGE_COLORS.follows, strokeWidth: 3 }, data: { reason: edge.reason }, ariaLabel: `이어받음: ${edge.reason ?? ''}` }
       : { ...edge, animated: false, className: `edge-${edge.kind}`, sourceHandle: 'out', targetHandle: 'in', style: { stroke: edgeColor(edge.kind) } });
   const viaProposals = proposals.flatMap(proposal => [
-    { id: `proposal:${proposal.aim_id}:${proposal.id}`, source: proposal.aim_id, target: proposal.id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-proposal', style: { stroke: EDGE_COLORS.proposal } },
+    parentOf.has(proposal.accepted_goal_id ?? '')
+      ? { id: `parent:${parentOf.get(proposal.accepted_goal_id as string)}:${proposal.id}`, source: parentOf.get(proposal.accepted_goal_id as string) as string, target: proposal.id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-parent', animated: false, style: { stroke: EDGE_COLORS.parent } }
+      : { id: `proposal:${proposal.aim_id}:${proposal.id}`, source: proposal.aim_id, target: proposal.id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-proposal', style: { stroke: EDGE_COLORS.proposal } },
     ...(proposal.accepted_goal_id && goalIds.has(proposal.accepted_goal_id)
       ? [{ id: `accepted:${proposal.id}:${proposal.accepted_goal_id}`, source: proposal.id, target: proposal.accepted_goal_id, sourceHandle: 'out', targetHandle: 'in', className: 'edge-accepted', style: { stroke: EDGE_COLORS.accepted } }] : []),
   ]);
@@ -627,11 +633,14 @@ export function routeDependencies(edges: Edge[], nodes: Node[]): Edge[] {
   });
 }
 
-// Parent and dependency lines stay faint so the structure reads first; the selected card's own lines come forward.
+// Dependency lines stay faint so the structure reads first; the selected card's own parent and dependency lines come forward.
 export function emphasizeConnected(edges: Edge[], selectedNodeId?: string): Edge[] {
   if (!selectedNodeId) return edges;
+  // With Proposals shown, a sub-task's parent line ends at the Proposal above it.
+  const ownProposal = edges.find(edge => edge.target === selectedNodeId && edge.className?.includes('edge-accepted'))?.source;
   return edges.map(edge => {
-    if ((edge.source !== selectedNodeId && edge.target !== selectedNodeId) || !/edge-(parent|dependency)/.test(edge.className ?? '')) return edge;
+    const ownParentLine = edge.target === ownProposal && edge.className?.includes('edge-parent');
+    if ((edge.source !== selectedNodeId && edge.target !== selectedNodeId && !ownParentLine) || !/edge-(parent|dependency)/.test(edge.className ?? '')) return edge;
     return { ...edge, className: `${(edge.className ?? '').replace('dimmed', '').trim()} is-connected`, animated: edge.className?.includes('edge-dependency') ?? false, zIndex: 10 };
   });
 }
