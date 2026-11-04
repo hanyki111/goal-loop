@@ -571,6 +571,9 @@ no server or dependency and shows each Goal's Aim, phase, parent, and required p
 Parent links are blue; dependency links are orange dashed lines; a red node has an unmet Goal
 dependency. Hover a node for its Aim and current dependency status.
 
+To work inside VS Code, including over Remote SSH, build and install the extension in [`vscode/`](vscode/README.md).
+Clicking `.goal-loop/journal.sqlite3` then opens the desktop app's screen in an editor tab, with the same changes.
+
 A failed Attempt is not a failed Goal. Before starting the same Contract again, record and
 consume one retry Decision; this preserves why the retry is valid:
 

@@ -1,0 +1,47 @@
+{
+  "name": "goal-loop",
+  "displayName": "Goal Loop",
+  "description": "Open a project's Goal Loop journal in VS Code: the desktop app's graph and record screens, including changes.",
+  "version": "0.1.0",
+  "publisher": "hanyki111",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/hanyki111/goal-loop" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Visualization", "Other"],
+  "main": "./src/extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "Goal Loop runs the CLI found in the project's .venv." },
+    "virtualWorkspaces": false
+  },
+  "activationEvents": ["workspaceContains:.goal-loop/journal.sqlite3"],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "goalLoop.journal",
+        "displayName": "Goal Loop",
+        "selector": [{ "filenamePattern": "**/.goal-loop/journal.sqlite3" }],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      { "command": "goalLoop.open", "title": "Goal Loop: 화면 열기" }
+    ],
+    "configuration": {
+      "title": "Goal Loop",
+      "properties": {
+        "goalLoop.executable": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "goal-loop 실행 파일 경로입니다. 비워 두면 프로젝트의 .venv, PATH, python3 -m goal_loop_tool 순서로 찾습니다."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "build": "npm --prefix ../ui run build:vscode",
+    "package": "npm run build && node -e \"require('fs').copyFileSync('../LICENSE','LICENSE')\" && npx --yes @vscode/vsce@3.2.1 package --no-dependencies"
+  }
+}

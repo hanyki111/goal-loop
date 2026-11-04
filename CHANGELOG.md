@@ -16,6 +16,7 @@
 - 과제 연결: 상위 과제(`goal-parent-add`), 선행 과제(`goal-dependency-add`), 실행을 막지 않고 흐름만 남기는 이어받음(`goal-follow-add`, 목표가 달라도 연결 가능).
 - 위임 판정(`goal-loop-judge`): 실행하지 않은 에이전트(Codex CLI, Claude CLI, Claude CLI로 연결한 다른 모델)가 프로젝트 사본에서 판정하고, 그 답을 그대로 기록합니다.
 - 데스크톱 앱(Tauri, 한국어 화면): 목표 → 접근안 → 과제 그래프와 배치·필터, ID 검색(Ctrl+K), 지금 할 일 안내, 검토함과 실행 대기함, 창이 다시 활성화될 때 기록 다시 읽기.
+- VS Code 확장(`vscode/`): `.goal-loop/journal.sqlite3`를 클릭하면 데스크톱 앱과 같은 화면을 편집기 탭에 열고, 같은 범위의 기록 변경을 합니다. Remote SSH에서는 서버 쪽에서 실행됩니다.
 - 선택 연결:
   - AI_ORCHESTRATION(AO): 과제를 AO에서 실행하고(`ao-attempt-start`, `runtime-worker`) 결과를 근거로 가져오며(`ao-import`), 앱에서 AO 실행 내역을 봅니다.
   - Memory Tool: 판정이 생기면 타임라인 기록 초안을 제안하고, 기록을 인용한 타임라인 줄과 참조 문서를 앱에서 봅니다(Memory Tool 기본 폴더 설정을 따름).
