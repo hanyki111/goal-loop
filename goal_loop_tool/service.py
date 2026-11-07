@@ -11,6 +11,7 @@ from .model import (
     AttemptOutcome,
     Decision,
     Evidence,
+    ExternalEvaluation,
     EvidenceAttachment,
     ExecutionAttempt,
     Reference,
@@ -63,6 +64,7 @@ class GoalLoop:
         self.aims: dict[str, Aim] = {}
         self.aim_evaluations: dict[str, AimEvaluation] = {}
         self.aim_evaluation_validity: dict[str, VerdictValidity] = {}
+        self.external_evaluations: dict[str, ExternalEvaluation] = {}
         self.proposals: dict[str, GoalProposal] = {}
         self.goals: dict[str, Goal] = {}
         self.contracts: dict[tuple[str, int], GoalContract] = {}
@@ -140,13 +142,18 @@ class GoalLoop:
         verdict_ids: tuple[str, ...],
         conclusion: str,
         child_evaluation_ids: tuple[str, ...] = (),
+        external_evaluation_ids: tuple[str, ...] = (),
     ) -> AimEvaluation:
         """Record an explicit Aim evaluation; verified Goals or achieved sub-Aims never close an Aim implicitly."""
         aim = self._require(self.aims, aim_id, "Aim")
         if aim.phase is not AimPhase.OPEN:
             raise GoalLoopError("Only an open Aim can be evaluated as achieved.")
-        if not verdict_ids and not child_evaluation_ids:
-            raise GoalLoopError("An Aim evaluation must cite at least one Verdict or sub-Aim evaluation.")
+        if not verdict_ids and not child_evaluation_ids and not external_evaluation_ids:
+            raise GoalLoopError("An Aim evaluation must cite at least one Verdict, sub-Aim evaluation, or imported evaluation.")
+        for external_id in external_evaluation_ids:
+            external = self._require(self.external_evaluations, external_id, "Imported evaluation")
+            if external.aim_id != aim_id:
+                raise GoalLoopError("An Aim evaluation may cite only evaluations imported for that Aim.")
         for child_evaluation_id in child_evaluation_ids:
             child_evaluation = self._require(self.aim_evaluations, child_evaluation_id, "Aim Evaluation")
             if self.aims[child_evaluation.aim_id].parent_aim_id != aim_id:
@@ -169,11 +176,35 @@ class GoalLoop:
             verdict_ids=verdict_ids,
             conclusion=conclusion,
             child_evaluation_ids=tuple(child_evaluation_ids),
+            external_evaluation_ids=tuple(external_evaluation_ids),
         )
         self.aim_evaluations[evaluation.id] = evaluation
         self.aim_evaluation_validity[evaluation.id] = VerdictValidity.VALID
         aim.phase = AimPhase.ACHIEVED
         return evaluation
+    def import_external_evaluation(
+        self, aim_id: str, reference_id: str, project: str, external_aim_id: str, external_evaluation_id: str,
+        external_evaluator_actor_id: str, conclusion: str, imported_by_actor_id: str,
+    ) -> ExternalEvaluation:
+        """Record a linked Aim's evaluation as a citable fact; the caller has read it from the linked journal."""
+        aim = self._require(self.aims, aim_id, "Aim")
+        if aim.phase is not AimPhase.OPEN:
+            raise GoalLoopError("Evaluations can be imported only for an open Aim.")
+        reference = self._require(self.references, reference_id, "Reference")
+        if reference.subject_kind != "aim" or reference.subject_id != aim_id or reference.removed_by_actor_id is not None:
+            raise GoalLoopError("An evaluation is imported through a current link of the same Aim.")
+        if not imported_by_actor_id.strip():
+            raise GoalLoopError("Importing an evaluation needs the actor.")
+        if any(item.reference_id == reference_id and item.external_evaluation_id == external_evaluation_id
+               for item in self.external_evaluations.values()):
+            raise GoalLoopError(f"{external_evaluation_id} was already imported through {reference_id}.")
+        external = ExternalEvaluation(
+            self._new_id("external-evaluation"), aim_id, reference_id, project, external_aim_id, external_evaluation_id,
+            external_evaluator_actor_id, conclusion, imported_by_actor_id,
+        )
+        self.external_evaluations[external.id] = external
+        return external
+
     def create_proposal(self, aim_id: str, direction: str, proposed_by_actor_id: str | None = None) -> GoalProposal:
         aim = self._require(self.aims, aim_id, "Aim")
         if aim.phase is AimPhase.ABANDONED:

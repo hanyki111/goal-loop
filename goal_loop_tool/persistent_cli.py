@@ -20,10 +20,12 @@ from .ao_cli_runtime import (
 )
 from .ao_links import backfill as backfill_ao_links, link_goal, links as ao_goal_links
 from .ao_sync import AoSyncError, sync as sync_ao_changes
+from .aim_links import (AimLinkError, add_link as add_aim_link, broken_links as broken_aim_links, import_evaluation as import_aim_link_evaluation,
+                        current_links as current_aim_links, link_records as aim_link_records, umbrella_next)
 from .claude_runtime import ClaudePrintProfile
 from .codex_runtime import CodexExecProfile
 from .model import AttemptOutcome, EvidenceAttachment, GoalIdentity, ReviewDisposition, VerdictResult, VerdictValidity
-from .persistent import PersistentGoalLoop
+from .persistent import PersistentGoalLoop, replay_journal
 from .project import (
     ProjectLocationError, artifacts_dir_for, discover_project_database, init_project, normalize_reference,
     project_database, project_root_for, store_attachment,
@@ -167,6 +169,18 @@ _COMMAND_HELP = {
         "연결된 AI_ORCHESTRATION(AO) Goal 쪽의 변화(AO Goal이 reverted·abandoned, 그 Goal을 affectedGoals에 둔 가정이 invalidated)를 찾아, 유효한 판정이 인용한 AO 근거에 정정을 남깁니다. 그 판정은 재검토(under_review)가 되고 해소는 사람이 합니다. 같은 변화는 한 번만 기록합니다. --dry-run은 기록하지 않고 찾은 변화만 보여 줍니다.",
         'ao-sync --ao-workspace E:\\ai_orchestration\\workspace --actor claude --dry-run',
     ),
+    "aim-link-add": (
+        "이 저널(거시 저널)의 Aim을 다른 프로젝트 저널의 Aim에 연결합니다. 연결은 Aim의 참고 문서 링크('Goal Loop Aim <폴더>/<Aim ID>')로 기록되고, 하위 저널은 읽기만 합니다. 하위 저널이나 Aim이 없으면 기록하지 않습니다. 해제는 reference-remove로 합니다.",
+        'aim-link-add aim-3 --workspace guildmaster --external-aim aim-1 --actor claude',
+    ),
+    "aim-link-import": (
+        "연결된 하위 Aim이 하위 저널에서 달성되면, 그 유효한 달성 평가를 이 저널에 가져온 평가(external-evaluation-N)로 기록합니다. 이 저널의 Aim은 aim-evaluate에서 그 ID를 근거로 인용할 수 있습니다. 판정은 하위 저널에서 한 번만 하며, 나중에 하위 저널에서 그 평가가 무효화되면 aim-links가 still_valid=false로 알려 줍니다.",
+        'aim-link-import reference-3 --actor claude',
+    ),
+    "aim-links": (
+        "이 저널의 Aim 연결마다 하위 Aim의 현재 상태(open·achieved·paused·abandoned·evaluation_invalidated, 끊긴 연결은 broken과 이유), 유효한 달성 평가, 진행 중인 하위 Goal을 하위 저널에서 읽기 전용으로 읽어 보여 줍니다.",
+        'aim-links --aim aim-3',
+    ),
     "reference-add": (
         "Aim, Proposal, Goal에 참고 문서(파일 경로나 URL)를 연결합니다. 문서는 바뀔 수 있으므로 판정 기준은 Contract 본문에 적으세요.",
         'reference-add goal-1 docs\\design.md --label "설계 문서" --actor "owner"',
@@ -196,8 +210,8 @@ _COMMAND_HELP = {
         "activity",
     ),
     "next": (
-        "현재 projection에서 가능한 다음 행동을 구조화된 읽기 전용 JSON으로 봅니다.",
-        "next",
+        "현재 projection에서 가능한 다음 행동을 구조화된 읽기 전용 JSON으로 봅니다. --aim <aim-id>를 주면 그 Aim과 하위 Aim에서 생긴 행동만 봅니다. Aim 연결이 있는 저널(거시 저널)에서는 linked에 연결된 저널의 다음 행동을 출처와 함께 담고, skipped에 멈춤·폐기·달성된 Aim의 연결을 담으며, 하위 Aim이 달성되면 aim-link-import를 제안합니다.",
+        "next [--aim <aim-id>]",
     ),
     "reviews": (
         "under_review Verdict·Aim Evaluation 및 그 Impact Review와 이미 기록된 resolution을 읽기 전용으로 봅니다.",
@@ -260,7 +274,7 @@ _COMMAND_HELP = {
         "guide",
     ),
     "aim-evaluate": (
-        "유효한 satisfied Verdict나 직접 하위 목표의 유효한 달성 평가를 근거로 Aim 자체가 달성되었는지 명시적으로 평가합니다. 하위 목표를 모두 달성해도 상위 목표는 자동으로 달성되지 않습니다.",
+        "유효한 satisfied Verdict나 직접 하위 목표의 유효한 달성 평가, 연결된 목표에서 가져온 평가(external-evaluation-N, aim-link-import)를 근거로 Aim 자체가 달성되었는지 명시적으로 평가합니다. 하위 목표를 모두 달성해도 상위 목표는 자동으로 달성되지 않습니다.",
         'aim-evaluate aim-1 "evaluator" "Aim의 의도까지 충족되었다." verdict-1 aim-evaluation-2',
     ),
     "project-init": (
@@ -451,17 +465,36 @@ def _run_guided_operation(label: str, operation: Callable[[], None], output: Cal
         output("현재 상태와 허용되는 다음 행동은 메뉴 [2] 또는 admission/reviews에서 확인하세요.")
 
 
-def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]:
+def aim_subtree(loop: PersistentGoalLoop, aim_id: str) -> set[str]:
+    """The Aim and every Aim below it, through any number of sub-Aim levels."""
+    if aim_id not in loop.aims:
+        raise GoalLoopError(f"Aim을 찾을 수 없습니다: {aim_id}")
+    scope = {aim_id}
+    while True:
+        added = {aim.id for aim in loop.aims.values() if aim.parent_aim_id in scope} - scope
+        if not added:
+            return scope
+        scope |= added
+
+
+def _next_action_records(loop: PersistentGoalLoop, database: Path, aim_scope: str | None = None) -> list[dict]:
     """Project the smallest valid next actions without appending any journal event.
 
     The records are intentionally suggestions, not commands automatically carried
     out by an agent.  A caller must still obtain authorization before changing a
     durable Aim, Proposal, Goal, Attempt, Evidence, Decision, or Verdict.
+
+    With ``aim_scope`` only actions arising from that Aim or its sub-Aims are kept.
+    Each action is placed by the Aim it arises from, so a parent's resume_aim
+    produced by a Goal inside the scope is kept even though the paused Aim is above it.
     """
     prefix = ["goal-loop", "--database", str(database)]
     actions: list[dict] = []
+    scope = aim_subtree(loop, aim_scope) if aim_scope is not None else None
 
-    def add(kind: str, subject_kind: str, subject_id: str | None, summary: str, command: list[str] | None = None, *, requires_user_authorization: bool = True) -> None:
+    def add(kind: str, subject_kind: str, subject_id: str | None, summary: str, command: list[str] | None = None, *, requires_user_authorization: bool = True, aims=()) -> None:
+        if scope is not None and not scope.intersection(aims):
+            return
         # Several Goals under one paused Aim would otherwise repeat the same resume action.
         if any(action["kind"] == kind and action["subject"] == {"kind": subject_kind, "id": subject_id} for action in actions):
             return
@@ -490,6 +523,7 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
                 "resolve_verdict_review", "impact_review", review.id,
                 f"Evidence correction 영향 검토 {review.id}가 Verdict {verdict_id}을 under_review로 만들었습니다. 근거를 재검토한 뒤 reaffirm 또는 invalidate로 명시적으로 종결하세요.",
                 ["verdict-review-resolve", review.id, "<reaffirm|invalidate>", "<reviewer>", "<reason>"],
+                aims=_impact_review_aims(loop, review),
             )
 
     for review in loop.impact_reviews.values():
@@ -514,6 +548,7 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
                 "resolve_aim_evaluation_review", "aim_evaluation", evaluation_id,
                 f"Aim Evaluation {evaluation_id}의 영향 검토 {review.id}를 종결하세요. 인용 Verdict의 현재 상태에 맞춰 {suggested_disposition} 여부를 판단해야 합니다.",
                 ["aim-evaluation-review-resolve", evaluation_id, review.id, f"<{suggested_disposition}>", "<reviewer>", "<reason>"],
+                aims=(evaluation.aim_id,),
             )
 
     for aim in loop.aims.values():
@@ -534,6 +569,7 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
                     "reopen_aim_after_closure_invalidation", "aim_evaluation", evaluation.id,
                     f"Aim {aim.id}의 종결 근거인 Aim Evaluation {evaluation.id}이 무효화됐고 현재 유효한 달성 평가는 없습니다. Aim을 다시 열지 여부를 명시적으로 판단하세요.",
                     ["aim-closure-invalidate", aim.id, evaluation.id, invalidating_resolution.id, "<reviewer>", "<reason>"],
+                    aims=(aim.id,),
                 )
 
     if not loop.aims:
@@ -549,13 +585,15 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
             live_goals = [g for g in loop.goals.values() if g.identity.primary_aim_id == aim.id and g.phase.value != "stopped"]
             # An Aim split into sub-Aims advances through them; it needs its own Proposal only by choice.
             has_sub_aims = any(child.parent_aim_id == aim.id for child in loop.aims.values())
-            if not open_proposals and not live_goals and not has_sub_aims:
-                add("create_proposal", "aim", aim.id, f"Aim {aim.id}에 열린 Proposal이 없습니다. 먼저 한 가지 실행 방향을 Proposal로 적으세요.", ["proposal-create", aim.id, "<direction>"])
+            # An Aim linked to another journal's Aim advances there (goal-142).
+            has_links = any(reference.subject_id == aim.id for reference, _, _ in current_aim_links(loop))
+            if not open_proposals and not live_goals and not has_sub_aims and not has_links:
+                add("create_proposal", "aim", aim.id, f"Aim {aim.id}에 열린 Proposal이 없습니다. 먼저 한 가지 실행 방향을 Proposal로 적으세요.", ["proposal-create", aim.id, "<direction>"], aims=(aim.id,))
     for proposal in loop.proposals.values():
         # An achieved Aim may retain historical/open alternatives, but accepting one would
         # violate the Core contract.  `next` must never suggest a command Core will reject.
         if proposal.status.value == "open" and loop.aims[proposal.aim_id].phase.value == "open" and not abandoned_ancestor(proposal.aim_id):
-            add("accept_proposal", "proposal", proposal.id, f"Proposal {proposal.id}을 실행하기 전에 결과 목표, 범위, 성공 기준, 검증 방법을 합의하여 Goal Contract로 확정하세요.", ["goal-accept", proposal.id, "--target", "<target>", "--responsibility", "<kind>", "--scope", "<scope>", "--criterion", "<criterion>", "--verification", "<verification>", "--key", "<idempotency-key>"])
+            add("accept_proposal", "proposal", proposal.id, f"Proposal {proposal.id}을 실행하기 전에 결과 목표, 범위, 성공 기준, 검증 방법을 합의하여 Goal Contract로 확정하세요.", ["goal-accept", proposal.id, "--target", "<target>", "--responsibility", "<kind>", "--scope", "<scope>", "--criterion", "<criterion>", "--verification", "<verification>", "--key", "<idempotency-key>"], aims=(proposal.aim_id,))
     for goal in loop.goals.values():
         aim_id = goal.identity.primary_aim_id
         if loop.aims[aim_id].phase.value != "open" or abandoned_ancestor(aim_id):
@@ -563,17 +601,17 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
         if goal.phase.value == "stopped":
             running = [a for a in loop.attempts.values() if a.goal_id == goal.id and a.outcome is AttemptOutcome.RUNNING]
             for attempt in running:
-                add("complete_attempt", "attempt", attempt.id, f"Goal {goal.id}은 중단됐지만 Attempt {attempt.id}이 실행 중입니다. 정리하려면 실제 결과를 기록하세요.", ["attempt-complete", attempt.id, "<succeeded|failed>"])
+                add("complete_attempt", "attempt", attempt.id, f"Goal {goal.id}은 중단됐지만 Attempt {attempt.id}이 실행 중입니다. 정리하려면 실제 결과를 기록하세요.", ["attempt-complete", attempt.id, "<succeeded|failed>"], aims=(aim_id,))
             continue
         paused_ancestor = next((ancestor for ancestor in loop.aim_ancestors(aim_id) if ancestor in loop.paused_aim_ids), None)
         if paused_ancestor and aim_id not in loop.paused_aim_ids:
-            add("resume_aim", "aim", paused_ancestor, f"상위 목표 {paused_ancestor}이 pause 상태이므로 Goal {goal.id}의 새 Attempt를 시작할 수 없습니다. 재개할 사유가 확인되면 상위 목표를 resume하세요.", ["aim-resume", paused_ancestor, "<actor>", "<reason>"])
+            add("resume_aim", "aim", paused_ancestor, f"상위 목표 {paused_ancestor}이 pause 상태이므로 Goal {goal.id}의 새 Attempt를 시작할 수 없습니다. 재개할 사유가 확인되면 상위 목표를 resume하세요.", ["aim-resume", paused_ancestor, "<actor>", "<reason>"], aims=(aim_id,))
             continue
         if aim_id in loop.paused_aim_ids:
-            add("resume_aim", "aim", aim_id, f"Aim {aim_id}이 pause 상태이므로 Goal {goal.id}의 새 Attempt를 시작할 수 없습니다. 재개할 사유가 확인되면 Aim을 resume하세요.", ["aim-resume", aim_id, "<actor>", "<reason>"])
+            add("resume_aim", "aim", aim_id, f"Aim {aim_id}이 pause 상태이므로 Goal {goal.id}의 새 Attempt를 시작할 수 없습니다. 재개할 사유가 확인되면 Aim을 resume하세요.", ["aim-resume", aim_id, "<actor>", "<reason>"], aims=(aim_id,))
             continue
         if goal.id in loop.goal_holds:
-            add("clear_goal_hold", "goal", goal.id, f"Goal {goal.id}에 unresolved Hold가 있어 새 Attempt를 시작할 수 없습니다. Hold를 해제해도 되는지 확인한 뒤 clear하세요.", ["goal-hold-clear", goal.id])
+            add("clear_goal_hold", "goal", goal.id, f"Goal {goal.id}에 unresolved Hold가 있어 새 Attempt를 시작할 수 없습니다. Hold를 해제해도 되는지 확인한 뒤 clear하세요.", ["goal-hold-clear", goal.id], aims=(aim_id,))
             continue
         blocked_dependencies = []
         for dependency in loop.verdict_dependencies.get(goal.id, []):
@@ -584,54 +622,54 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
                     or verdict.result is not required_result):
                 blocked_dependencies.append(verdict_id)
         if blocked_dependencies:
-            add("inspect_verdict_dependency", "goal", goal.id, f"Goal {goal.id}은 dependency Verdict {', '.join(blocked_dependencies)}가 현재 valid required result가 아니어서 새 Attempt를 시작할 수 없습니다. reviews와 activity에서 근거 상태를 확인하세요.", ["reviews"], requires_user_authorization=False)
+            add("inspect_verdict_dependency", "goal", goal.id, f"Goal {goal.id}은 dependency Verdict {', '.join(blocked_dependencies)}가 현재 valid required result가 아니어서 새 Attempt를 시작할 수 없습니다. reviews와 activity에서 근거 상태를 확인하세요.", ["reviews"], requires_user_authorization=False, aims=(aim_id,))
             continue
         blocked_goals = [
             dependency.required_goal_id for dependency in loop.goal_dependencies.get(goal.id, [])
             if not loop._has_current_valid_satisfied_verdict(dependency.required_goal_id)
         ]
         if blocked_goals:
-            add("inspect_goal_dependency", "goal", goal.id, f"Goal {goal.id}은 선행 Goal {', '.join(blocked_goals)}의 현재 valid satisfied Verdict가 필요합니다. goal-graph와 next로 선행 Goal을 먼저 완료하세요.", ["goal-graph"], requires_user_authorization=False)
+            add("inspect_goal_dependency", "goal", goal.id, f"Goal {goal.id}은 선행 Goal {', '.join(blocked_goals)}의 현재 valid satisfied Verdict가 필요합니다. goal-graph와 next로 선행 Goal을 먼저 완료하세요.", ["goal-graph"], requires_user_authorization=False, aims=(aim_id,))
             continue
         current_attempts = [a for a in loop.attempts.values() if a.goal_id == goal.id and a.contract_version == goal.current_contract_version]
         if not current_attempts:
-            add("start_attempt", "goal", goal.id, f"Goal {goal.id}은 Contract v{goal.current_contract_version}로 첫 Attempt를 시작할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>"])
+            add("start_attempt", "goal", goal.id, f"Goal {goal.id}은 Contract v{goal.current_contract_version}로 첫 Attempt를 시작할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>"], aims=(aim_id,))
             continue
         latest = current_attempts[-1]
         if latest.outcome is AttemptOutcome.RUNNING:
-            add("complete_attempt", "attempt", latest.id, f"Attempt {latest.id}이 실행 중입니다. 실제 실행 결과를 succeeded 또는 failed로 기록하세요.", ["attempt-complete", latest.id, "<succeeded|failed>"])
+            add("complete_attempt", "attempt", latest.id, f"Attempt {latest.id}이 실행 중입니다. 실제 실행 결과를 succeeded 또는 failed로 기록하세요.", ["attempt-complete", latest.id, "<succeeded|failed>"], aims=(aim_id,))
         elif latest.outcome is AttemptOutcome.FAILED:
             pending = next((decision for decision in loop.decisions.values() if decision.kind == "retry_same_contract" and decision.goal_id == goal.id and decision.target_attempt_id == latest.id and decision.consumed_by_attempt_id is None), None)
             if pending:
-                add("start_retry_attempt", "decision", pending.id, f"실패한 Attempt {latest.id}에 대한 retry Decision {pending.id}이 있습니다. 같은 Contract로 한 번만 소비하여 재시도할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>", "--retry-decision", pending.id])
+                add("start_retry_attempt", "decision", pending.id, f"실패한 Attempt {latest.id}에 대한 retry Decision {pending.id}이 있습니다. 같은 Contract로 한 번만 소비하여 재시도할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>", "--retry-decision", pending.id], aims=(aim_id,))
             else:
-                add("decide_retry", "attempt", latest.id, f"Attempt {latest.id}은 실패했습니다. 같은 Contract로 재시도하려면 이유를 retry Decision으로 먼저 남기세요.", ["retry-decide", goal.id, latest.id, "<actor>", "<reason>"])
+                add("decide_retry", "attempt", latest.id, f"Attempt {latest.id}은 실패했습니다. 같은 Contract로 재시도하려면 이유를 retry Decision으로 먼저 남기세요.", ["retry-decide", goal.id, latest.id, "<actor>", "<reason>"], aims=(aim_id,))
         elif goal.phase.value == "active":
             attempt_verdicts = [verdict for verdict in loop.verdicts.values() if verdict.attempt_id == latest.id]
             if attempt_verdicts and attempt_verdicts[-1].result is VerdictResult.NOT_SATISFIED:
-                add("start_repair_attempt", "goal", goal.id, f"Attempt {latest.id}의 Verdict는 not_satisfied입니다. 같은 Contract에서 보완 작업을 새 Attempt로 시작할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>"])
+                add("start_repair_attempt", "goal", goal.id, f"Attempt {latest.id}의 Verdict는 not_satisfied입니다. 같은 Contract에서 보완 작업을 새 Attempt로 시작할 수 있습니다.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>"], aims=(aim_id,))
             elif not [e for e in loop.evidence.values() if e.attempt_id == latest.id]:
-                add("record_evidence", "attempt", latest.id, f"완료된 Attempt {latest.id}에 관한 관찰 사실(Evidence)을 기록하세요. Attempt 성공은 아직 Goal 성공이 아닙니다.", ["evidence-record", latest.id, "<actor>", "<observation>"])
+                add("record_evidence", "attempt", latest.id, f"완료된 Attempt {latest.id}에 관한 관찰 사실(Evidence)을 기록하세요. Attempt 성공은 아직 Goal 성공이 아닙니다.", ["evidence-record", latest.id, "<actor>", "<observation>"], aims=(aim_id,))
             elif attempt_verdicts and attempt_verdicts[-1].result is VerdictResult.INCONCLUSIVE:
                 pending = next((decision for decision in loop.decisions.values() if decision.kind == "reverification_requires_new_attempt" and decision.goal_id == goal.id and decision.target_attempt_id == latest.id and decision.consumed_by_attempt_id is None), None)
                 if pending:
-                    add("start_reverification_attempt", "decision", pending.id, f"inconclusive Verdict 뒤 새 실행을 허용하는 re-verification Decision {pending.id}이 있습니다. 현재 Contract로 한 번만 소비하세요.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>", "--reverification-decision", pending.id])
+                    add("start_reverification_attempt", "decision", pending.id, f"inconclusive Verdict 뒤 새 실행을 허용하는 re-verification Decision {pending.id}이 있습니다. 현재 Contract로 한 번만 소비하세요.", ["attempt-start", goal.id, str(goal.current_contract_version), "<executor>", "<operation>", "--reverification-decision", pending.id], aims=(aim_id,))
                 else:
-                    add("decide_reverification", "goal", goal.id, f"Goal {goal.id}의 이전 Verdict는 inconclusive입니다. 새 실행이 필요하면 먼저 re-verification Decision을 남기세요.", ["reverification-decide", goal.id, "<actor>", "<reason>"])
+                    add("decide_reverification", "goal", goal.id, f"Goal {goal.id}의 이전 Verdict는 inconclusive입니다. 새 실행이 필요하면 먼저 re-verification Decision을 남기세요.", ["reverification-decide", goal.id, "<actor>", "<reason>"], aims=(aim_id,))
             else:
-                add("begin_verification", "goal", goal.id, f"Attempt {latest.id}에 Evidence가 있습니다. Goal 검증을 시작할 수 있습니다.", ["verification-begin", goal.id, latest.id])
+                add("begin_verification", "goal", goal.id, f"Attempt {latest.id}에 Evidence가 있습니다. Goal 검증을 시작할 수 있습니다.", ["verification-begin", goal.id, latest.id], aims=(aim_id,))
         elif goal.phase.value == "verifying":
             evidence_ids = [evidence.id for evidence in loop.evidence.values() if evidence.attempt_id == goal.verifying_attempt_id]
             prior = [verdict for verdict in loop.verdicts.values() if verdict.attempt_id == goal.verifying_attempt_id]
             if prior and prior[-1].result is VerdictResult.INCONCLUSIVE:
                 new_evidence_ids = [evidence_id for evidence_id in evidence_ids if evidence_id not in prior[-1].evidence_ids]
                 if not new_evidence_ids:
-                    add("record_additional_evidence", "attempt", goal.verifying_attempt_id, f"Goal {goal.id}의 이전 Verdict는 inconclusive입니다. 같은 Attempt에 새 Evidence를 기록한 뒤에만 재판정할 수 있습니다.", ["evidence-record", goal.verifying_attempt_id or "<attempt-id>", "<actor>", "<new-observation>"])
-                    add("decide_reverification", "goal", goal.id, f"같은 Attempt의 추가 관찰 대신 새 실행이 필요하다면 Goal {goal.id}에 re-verification Decision을 먼저 남기세요.", ["reverification-decide", goal.id, "<actor>", "<reason>"])
+                    add("record_additional_evidence", "attempt", goal.verifying_attempt_id, f"Goal {goal.id}의 이전 Verdict는 inconclusive입니다. 같은 Attempt에 새 Evidence를 기록한 뒤에만 재판정할 수 있습니다.", ["evidence-record", goal.verifying_attempt_id or "<attempt-id>", "<actor>", "<new-observation>"], aims=(aim_id,))
+                    add("decide_reverification", "goal", goal.id, f"같은 Attempt의 추가 관찰 대신 새 실행이 필요하다면 Goal {goal.id}에 re-verification Decision을 먼저 남기세요.", ["reverification-decide", goal.id, "<actor>", "<reason>"], aims=(aim_id,))
                 else:
-                    add("submit_superseding_verdict", "verdict", prior[-1].id, f"Goal {goal.id}에 새 Evidence가 있습니다. inconclusive Verdict {prior[-1].id}를 명시적으로 supersede하는 새 Verdict를 제출하세요.", ["verdict-submit", goal.id, goal.verifying_attempt_id or "<attempt-id>", "<verifier>", "<satisfied|not_satisfied|inconclusive>", *evidence_ids, "--supersedes-verdict", prior[-1].id])
+                    add("submit_superseding_verdict", "verdict", prior[-1].id, f"Goal {goal.id}에 새 Evidence가 있습니다. inconclusive Verdict {prior[-1].id}를 명시적으로 supersede하는 새 Verdict를 제출하세요.", ["verdict-submit", goal.id, goal.verifying_attempt_id or "<attempt-id>", "<verifier>", "<satisfied|not_satisfied|inconclusive>", *evidence_ids, "--supersedes-verdict", prior[-1].id], aims=(aim_id,))
             else:
-                add("submit_verdict", "goal", goal.id, f"Goal {goal.id}은 검증 중입니다. Evidence를 인용하여 독립 verifier가 Verdict를 제출하세요.", ["verdict-submit", goal.id, goal.verifying_attempt_id or "<attempt-id>", "<verifier>", "<satisfied|not_satisfied|inconclusive>", *(evidence_ids or ["<evidence-id>"])])
+                add("submit_verdict", "goal", goal.id, f"Goal {goal.id}은 검증 중입니다. Evidence를 인용하여 독립 verifier가 Verdict를 제출하세요.", ["verdict-submit", goal.id, goal.verifying_attempt_id or "<attempt-id>", "<verifier>", "<satisfied|not_satisfied|inconclusive>", *(evidence_ids or ["<evidence-id>"])], aims=(aim_id,))
     for aim in loop.aims.values():
         valid_satisfied = [
             verdict.id for verdict in loop.verdicts.values()
@@ -644,10 +682,22 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path) -> list[dict]
             if loop.aims[evaluation.aim_id].parent_aim_id == aim.id
             and loop.aim_evaluation_validity.get(evaluation.id) is VerdictValidity.VALID
         ]
-        if aim.phase.value == "open" and (valid_satisfied or valid_child_evaluations):
-            basis = "유효한 satisfied Verdict" if valid_satisfied else "달성된 하위 목표"
-            add("evaluate_aim", "aim", aim.id, f"Aim {aim.id}에는 {basis}가 있습니다. Goal이나 하위 목표의 완료와 별도로 Aim의 의도까지 충족됐는지 평가하세요.", ["aim-evaluate", aim.id, "<evaluator>", "<conclusion>", *valid_satisfied, *valid_child_evaluations])
+        imported = [external.id for external in loop.external_evaluations.values() if external.aim_id == aim.id]
+        if aim.phase.value == "open" and (valid_satisfied or valid_child_evaluations or imported):
+            basis = "유효한 satisfied Verdict" if valid_satisfied else "달성된 하위 목표" if valid_child_evaluations else "연결된 목표에서 가져온 달성 평가"
+            add("evaluate_aim", "aim", aim.id, f"Aim {aim.id}에는 {basis}가 있습니다. Goal이나 하위 목표의 완료와 별도로 Aim의 의도까지 충족됐는지 평가하세요.", ["aim-evaluate", aim.id, "<evaluator>", "<conclusion>", *valid_satisfied, *valid_child_evaluations, *imported], aims=(aim.id,))
     return actions
+
+
+def _impact_review_aims(loop: PersistentGoalLoop, review) -> tuple[str, ...]:
+    """Aims an Impact Review touches: those of its affected Goals and affected Aim Evaluations."""
+    aims = [loop.goals[goal_id].identity.primary_aim_id for goal_id in review.affected_goal_ids if goal_id in loop.goals]
+    aims += [loop.aim_evaluations[evaluation_id].aim_id for evaluation_id in review.affected_aim_evaluation_ids
+             if evaluation_id in loop.aim_evaluations]
+    trigger = loop.verdicts.get(review.trigger_verdict_id)
+    if trigger is not None and trigger.goal_id in loop.goals:
+        aims.append(loop.goals[trigger.goal_id].identity.primary_aim_id)
+    return tuple(aims)
 
 
 def _next_actions(loop: PersistentGoalLoop, database: Path) -> list[str]:
@@ -1415,7 +1465,8 @@ def main(argv: list[str] | None = None) -> None:
     project_init = sub.add_parser("project-init", help="Create a .goal-loop project journal in a folder (default: current folder)")
     project_init.add_argument("folder", nargs="?", type=Path, default=Path("."))
     sub.add_parser("where", help="Show which journal is used, its project root, attachment folder, and how it was found")
-    sub.add_parser("next", help="Return structured, read-only next actions for an agent or script")
+    next_parser = sub.add_parser("next", help="Return structured, read-only next actions for an agent or script")
+    next_parser.add_argument("--aim", dest="aim_scope", help="keep only actions arising from this Aim or its sub-Aims")
     sub.add_parser("reviews", help="Return read-only under-review Verdicts, Aim Evaluations, and Impact Reviews")
     sub.add_parser("admission", help="Return read-only execution-admission facts and dependency states")
     sub.add_parser("goal-graph", help="Return read-only parent-child, Goal dependency, and follow graph links")
@@ -1483,7 +1534,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("guide", help="Print a detailed self-service Korean CLI guide without changing data")
     aim_evaluate = sub.add_parser("aim-evaluate", help="Explicitly evaluate an Aim as achieved from valid satisfied Verdicts and/or valid sub-Aim evaluations")
     aim_evaluate.add_argument("aim_id"); aim_evaluate.add_argument("evaluator"); aim_evaluate.add_argument("conclusion")
-    aim_evaluate.add_argument("verdict_ids", nargs="+", help="verdict-* and aim-evaluation-* (direct sub-Aims) to cite")
+    aim_evaluate.add_argument("verdict_ids", nargs="+", help="verdict-*, aim-evaluation-* (direct sub-Aims), and external-evaluation-* (imported for this Aim) to cite")
     guided = sub.add_parser("guided", help="Ask questions and create an Aim-led workflow")
     guided.add_argument("--no-prompt", action="store_true", help=argparse.SUPPRESS)
     help_parser = sub.add_parser("help", help="Explain a persistent command in Korean")
@@ -1535,6 +1586,20 @@ def main(argv: list[str] | None = None) -> None:
     ao_sync_parser = sub.add_parser("ao-sync", help="Record AO-side changes (reverted/abandoned AO Goals, invalidated assumptions) as Evidence corrections")
     ao_sync_parser.add_argument("--ao-workspace", type=Path, required=True); ao_sync_parser.add_argument("--actor", required=True)
     ao_sync_parser.add_argument("--dry-run", action="store_true")
+    aim_link_add = sub.add_parser("aim-link-add", help="Link an Aim of this (umbrella) journal to an Aim of another project's journal")
+    aim_link_add.add_argument("aim_id")
+    aim_link_target = aim_link_add.add_mutually_exclusive_group(required=True)
+    # Separate dests: the global --workspace/--project choose this journal, these name the linked one.
+    aim_link_target.add_argument("--workspace", dest="link_workspace", help="desktop workspace name or id of the linked journal")
+    aim_link_target.add_argument("--project", dest="link_project", type=Path, help="project folder of the linked journal")
+    aim_link_add.add_argument("--external-aim", required=True, help="Aim id in the linked journal")
+    aim_link_add.add_argument("--actor", required=True)
+    aim_link_import = sub.add_parser("aim-link-import", help="Import a linked Aim's valid evaluation so this journal's Aim can cite it")
+    aim_link_import.add_argument("reference_id", help="the Aim link (reference-*) shown by aim-links")
+    aim_link_import.add_argument("--actor", required=True)
+    aim_link_import.add_argument("--evaluation", help="the linked journal's aim-evaluation-* to import (default: its latest valid one)")
+    aim_links_parser = sub.add_parser("aim-links", help="List Aim links with the linked Aims' current state, read-only")
+    aim_links_parser.add_argument("--aim", dest="aim_scope", help="only the links of this Aim")
     reference_add = sub.add_parser("reference-add", help="Point an Aim, Proposal, or Goal at a living document (context, never a criterion)")
     reference_add.add_argument("subject_id", help="aim-*, proposal-*, or goal-*"); reference_add.add_argument("location", help="URL or file path")
     reference_add.add_argument("--label"); reference_add.add_argument("--actor", required=True)
@@ -1626,7 +1691,15 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "activity":
         for card in activity_cards(repo): _emit(card.__dict__)
         return
-    if args.command == "doctor": _emit({"integrity": repo.integrity_diagnostics(), "checkpoint_current": repo.projection_checkpoint_is_current(), "schema_version": repo.schema_version()}); return
+    if args.command == "doctor":
+        report = {"integrity": repo.integrity_diagnostics(), "checkpoint_current": repo.projection_checkpoint_is_current(), "schema_version": repo.schema_version()}
+        try:
+            # Replayed without writing, so doctor still reports on a journal it cannot rebuild.
+            report["broken_aim_links"] = broken_aim_links(replay_journal(SqliteEventRepository.read_only_events(args.database)))
+        except Exception as error:
+            report["broken_aim_links"] = None
+            report["aim_links_error"] = f"{type(error).__name__}: {error}"
+        _emit(report); return
     if args.command == "backup":
         repo.backup_to(args.destination)
         artifacts = artifacts_dir_for(args.database)
@@ -1647,7 +1720,32 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "runtime-requeue": _emit(repo.requeue_runtime_request(args.request_id, args.worker).__dict__); return
     loop = PersistentGoalLoop(repo, enforce_authority=args.enforce_authority)
     if args.command == "status": _emit({"aims": list(loop.aims), "goals": list(loop.goals), "attempts": list(loop.attempts), "checkpoint": repo.projection_checkpoint()}); return
-    if args.command == "next": _emit({"database": str(args.database), "actions": _next_action_records(loop, args.database)}); return
+    if args.command == "next":
+        try:
+            actions = _next_action_records(loop, args.database, args.aim_scope)
+        except GoalLoopError as error:
+            parser.error(str(error))
+        record = {"database": str(args.database), "actions": actions}
+        if args.aim_scope is not None:
+            record["aim_scope"] = args.aim_scope
+        # An umbrella journal also shows its linked journals' next actions, read without writing to them (goal-142).
+        umbrella = umbrella_next(loop, lambda child, database, aim_id: _next_action_records(child, database, aim_id),
+                                 aim_subtree(loop, args.aim_scope) if args.aim_scope is not None else None)
+        if umbrella is not None:
+            for item in umbrella["imports"]:
+                reference = item["reference"]
+                actions.append({
+                    "kind": "import_linked_evaluation",
+                    "subject": {"kind": "reference", "id": reference.id},
+                    "aim_id": reference.subject_id,
+                    "summary": f"연결된 {item['project'].name}의 Aim {item['external_aim_id']}이 달성되었습니다({', '.join(item['evaluation_ids'])}). "
+                               f"그 평가를 가져오면 Aim {reference.subject_id}의 달성 평가에 인용할 수 있습니다.",
+                    "requires_user_authorization": True,
+                    "command_argv": ["goal-loop", "--database", str(args.database), "aim-link-import", reference.id, "--actor", "<actor>"],
+                })
+            record["linked"] = umbrella["linked"]
+            record["skipped"] = umbrella["skipped"]
+        _emit(record); return
     if args.command == "reviews": _emit({"database": str(args.database), **_review_records(loop)}); return
     if args.command == "admission": _emit({"database": str(args.database), "enforce_authority": args.enforce_authority, **_admission_records(loop)}); return
     if args.command == "goal-graph": _emit({"database": str(args.database), "parents": loop.goal_parents, "dependencies": {goal_id: [item.required_goal_id for item in records] for goal_id, records in loop.goal_dependencies.items()}, "follows": [{"goal_id": item.goal_id, "previous_goal_id": item.previous_goal_id, "actor_id": item.actor_id, "reason": item.reason} for item in loop.goal_follows]}); return
@@ -1660,8 +1758,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "graph-export": export_goal_graph(loop, args.destination); _emit({"graph_export": str(args.destination)}); return
     if args.command == "aim-evaluate":
         cited_evaluations = tuple(item for item in args.verdict_ids if item.startswith("aim-evaluation-"))
-        cited_verdicts = tuple(item for item in args.verdict_ids if not item.startswith("aim-evaluation-"))
-        _emit(loop.evaluate_aim_as_achieved(args.aim_id, args.evaluator, cited_verdicts, args.conclusion, cited_evaluations).__dict__); return
+        cited_external = tuple(item for item in args.verdict_ids if item.startswith("external-evaluation-"))
+        cited_verdicts = tuple(item for item in args.verdict_ids if not item.startswith(("aim-evaluation-", "external-evaluation-")))
+        _emit(loop.evaluate_aim_as_achieved(args.aim_id, args.evaluator, cited_verdicts, args.conclusion, cited_evaluations, cited_external).__dict__); return
     if args.command == "aim-create": _emit(loop.create_aim(args.description, args.parent).__dict__); return
     if args.command == "aim-parent-add": _emit(loop.link_aim_parent(args.child_aim_id, args.parent_aim_id).__dict__); return
     if args.command == "proposal-create": _emit(loop.create_proposal(args.aim_id, args.direction, args.actor).__dict__); return
@@ -1867,6 +1966,24 @@ def main(argv: list[str] | None = None) -> None:
         if args.ao_goal and ao_goal is None:
             parser.error("--ao-goal은 <프로젝트>/<AO Goal ID> 형식입니다.")
         _emit({"added": added, "links": ao_goal_links(loop, artifacts_dir_for(args.database), goal_id=args.goal, ao_goal=ao_goal)}); return
+    if args.command == "aim-link-add":
+        try:
+            if args.link_workspace:
+                target = resolve_workspace(args.link_workspace)
+            else:
+                target = project_database(args.link_project.resolve())
+            _emit(add_aim_link(loop, args.aim_id, args.database, target, args.external_aim, args.actor).__dict__); return
+        except (AimLinkError, ValueError) as error:
+            parser.error(str(error))
+    if args.command == "aim-link-import":
+        try:
+            _emit(import_aim_link_evaluation(loop, args.reference_id, args.actor, args.evaluation).__dict__); return
+        except (AimLinkError, ValueError) as error:
+            parser.error(str(error))
+    if args.command == "aim-links":
+        if args.aim_scope is not None and args.aim_scope not in loop.aims:
+            parser.error(f"Aim을 찾을 수 없습니다: {args.aim_scope}")
+        _emit({"database": str(args.database), "links": aim_link_records(loop, args.aim_scope)}); return
     if args.command == "reference-add":
         kind = args.subject_id.split("-", 1)[0]
         try:

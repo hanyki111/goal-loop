@@ -84,6 +84,11 @@ separate agent that did not execute the work, normally `codex` when `claude` exe
   to the copy, and runs `codex exec` there with the Contract (or Aim criteria), the Evidence, and the Decision 5 rules,
   its answer fixed by a JSON Schema. Windows sandboxes did not keep writes out of the project consistently, so the
   copy, not the sandbox, protects the project; the copy stays in the OS temp folder for audit.
+- A project can set its own judging in `.goal-loop/judging.json` (goal-140): `copy_exclude` (patterns left out of the
+  copy; one with `/` is matched from the project root, one without matches any name), `attachments_only` (the default
+  for `goal`; `--attachments-only`/`--no-attachments-only` override it), and `rules` (`code`, or `notes` for work that is
+  not code: the judge reads Evidence, attachments, references and the notes in the copy instead of rerunning tests).
+  An unknown key or a wrong value stops the run before a copy is made; the result reports the settings it applied.
 - A judge still running 60 seconds after its answer is complete is ended with its process tree, and processes whose
   command line names the judge's copy (servers it left) are ended after each run (goal-78). Codex's sandbox cannot list
   or end other Windows processes; those tests skip there with a reason, so a Goal that depends on them is judged with

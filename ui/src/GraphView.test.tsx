@@ -189,7 +189,7 @@ const wideData = (() => {
   for (let index = 1; index <= 8; index += 1) {
     proposals.push({ id: `proposal-${index}`, aim_id: 'aim-2', direction: `접근안 ${index}`, status: 'open', accepted_goal_id: null });
   }
-  return { aims, proposals, goals, attempts: [], evidence: [], verdicts: [], aim_evaluations: [], schema_version: 16, nodes, edges: [] } as never;
+  return { aims, proposals, goals, attempts: [], evidence: [], verdicts: [], aim_evaluations: [], schema_version: 18, nodes, edges: [] } as never;
 })();
 
 describe('wide graph layout', () => {

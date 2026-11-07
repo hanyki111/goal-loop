@@ -14,7 +14,9 @@ import json
 import hashlib
 import uuid
 from pathlib import Path
+import shutil
 import sqlite3
+import tempfile
 from typing import Iterator
 
 
@@ -78,6 +80,43 @@ class RuntimeOutboxRequest:
 
 class SqliteEventRepository:
     """SQLite journal and command-receipt store with all-or-nothing appends."""
+
+    @staticmethod
+    def read_only_events(path: str | Path) -> list[JournalEvent]:
+        """Read another journal's events without creating, migrating, or writing any of its files.
+
+        - -wal and -shm present (some connection has it open): opened read-only, which reads the records
+          the WAL holds; SQLite then updates only the -shm lock index, as every reader does.
+        - no -wal (checkpointed): opened immutable so SQLite creates no -wal or -shm beside it; a writer
+          starting in that moment writes to a new -wal first, so the read may miss it but never tears.
+        - -wal without -shm (no connection open, e.g. after a crash): a read-only open would create -shm,
+          so the journal and its WAL are copied to a temporary folder and the copy is read. With no
+          connection open there is no writer to tear the copy.
+        """
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"저널 파일이 없습니다: {path}")
+        wal, shm = (path.with_name(path.name + suffix) for suffix in ("-wal", "-shm"))
+        if wal.exists() and not shm.exists():
+            with tempfile.TemporaryDirectory(prefix="goal-loop-read-") as folder:
+                copy = Path(folder) / path.name
+                shutil.copyfile(path, copy)
+                shutil.copyfile(wal, copy.with_name(copy.name + "-wal"))
+                return SqliteEventRepository._read_events(sqlite3.connect(copy))
+        mode = "mode=ro" if wal.exists() else "mode=ro&immutable=1"
+        return SqliteEventRepository._read_events(sqlite3.connect(f"{path.resolve().as_uri()}?{mode}", uri=True))
+
+    @staticmethod
+    def _read_events(connection: sqlite3.Connection) -> list[JournalEvent]:
+        connection.row_factory = sqlite3.Row
+        try:
+            rows = connection.execute("SELECT * FROM event_journal ORDER BY sequence").fetchall()
+        finally:
+            connection.close()
+        return [JournalEvent(row["event_id"], row["event_type"], row["actor_id"],
+                             row["subject_kind"], row["subject_id"],
+                             json.loads(row["payload_json"]), row["event_schema_version"])
+                for row in rows]
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)

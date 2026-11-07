@@ -40,6 +40,7 @@ _TITLES = {
     "VerdictReviewResolved": "Verdict 영향 검토 종결",
     "VerdictInvalidated": "Verdict 무효화",
     "AimEvaluated": "Aim 달성 평가",
+    "ExternalEvaluationImported": "연결된 목표의 달성 평가 가져오기",
     "AimEvaluationReviewResolved": "Aim 평가 영향 검토 종결",
     "AimClosureInvalidated": "Aim 종결 무효화 및 재개",
     "ExecutionGranted": "실행 권한 부여",
@@ -104,6 +105,8 @@ def _detail(event_type: str | None, payload: dict[str, object]) -> str:
     if event_type == "ReferenceAdded":
         label = payload.get("label")
         return f"{label}: {payload.get('location')}" if label else str(payload.get("location", ""))
+    if event_type == "ExternalEvaluationImported":
+        return f"{payload.get('project')}의 {payload.get('external_aim_id')} 평가 {payload.get('external_evaluation_id')} ({payload.get('reference_id')}): {payload.get('conclusion', '')}"
     if event_type == "ReferenceRemoved":
         return f"{payload.get('reference_id')}; 이유: {payload.get('reason') or '기록 없음'}"
     if event_type in {"AimPaused", "AimResumed", "DecisionRecorded", "ReverificationDecisionRecorded"}:

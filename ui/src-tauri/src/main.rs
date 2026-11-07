@@ -7,7 +7,7 @@ const UI_COMMANDS: &[&str] = &[
     "verdict-review-resolve", "aim-evaluation-review-resolve", "aim-closure-invalidate",
     "aim-pause", "aim-resume", "goal-hold-add", "goal-hold-clear", "goal-parent-add", "goal-follow-add",
     "goal-dependency-add", "proposal-close", "goal-stop", "aim-abandon",
-    "reference-add", "reference-remove", "aim-parent-add",
+    "reference-add", "reference-remove", "aim-parent-add", "aim-link-import",
 ];
 
 /// Opening one of these would run it, so the app reveals it in Explorer instead.

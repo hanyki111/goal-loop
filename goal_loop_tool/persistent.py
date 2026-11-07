@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from .model import (
     AdmissionErrorCode, Aim, AimClosureInvalidation, AimEvaluation, AttemptOutcome,
-    Decision, Evidence, EvidenceAttachment, EvidenceCorrection, ExecutionAttempt, Goal, GoalIdentity,
+    Decision, Evidence, EvidenceAttachment, EvidenceCorrection, ExecutionAttempt, ExternalEvaluation, Goal, GoalIdentity,
     GoalProposal, Reference, ReviewDisposition, ReviewResolution, VerificationVerdict, VerdictResult,
 )
 from .repository import (
@@ -106,7 +106,7 @@ class PersistentGoalLoop:
                 self._loop.decisions, self._loop.verdicts,
                 self._loop.evidence_corrections, self._loop.impact_reviews,
                 self._loop.review_resolutions, self._loop.aim_closure_invalidations,
-                self._loop.references,
+                self._loop.references, self._loop.external_evaluations,
             ):
                 if record_id in records:
                     return records[record_id]
@@ -414,12 +414,13 @@ class PersistentGoalLoop:
         return self._execute(command_id, "submit_verdict", {"goal_id": goal_id, "attempt_id": attempt_id, "verifier_actor_id": verifier_actor_id, "result": result.value, "evidence_ids": list(evidence_ids), "supersedes_verdict_id": supersedes_verdict_id, **extra}, invoke)
 
     def evaluate_aim_as_achieved(
-        self, aim_id, evaluator_actor_id, verdict_ids, conclusion, child_evaluation_ids=(), *, command_id=None
+        self, aim_id, evaluator_actor_id, verdict_ids, conclusion, child_evaluation_ids=(), external_evaluation_ids=(), *, command_id=None
     ) -> AimEvaluation:
         child_evaluation_ids = tuple(child_evaluation_ids)
+        external_evaluation_ids = tuple(external_evaluation_ids)
         def invoke(loop):
             evaluation = loop.evaluate_aim_as_achieved(
-                aim_id, evaluator_actor_id, tuple(verdict_ids), conclusion, child_evaluation_ids
+                aim_id, evaluator_actor_id, tuple(verdict_ids), conclusion, child_evaluation_ids, external_evaluation_ids
             )
             payload = {
                 "aim_id": aim_id,
@@ -430,6 +431,8 @@ class PersistentGoalLoop:
             }
             if child_evaluation_ids:
                 payload["child_evaluation_ids"] = list(child_evaluation_ids)
+            if external_evaluation_ids:
+                payload["external_evaluation_ids"] = list(external_evaluation_ids)
             return evaluation, JournalEvent(
                 self._event_id(), "AimEvaluated", evaluator_actor_id,
                 "aim_evaluation", evaluation.id, payload
@@ -437,7 +440,23 @@ class PersistentGoalLoop:
         request = {"aim_id": aim_id, "verdict_ids": list(verdict_ids)}
         if child_evaluation_ids:
             request["child_evaluation_ids"] = list(child_evaluation_ids)
+        if external_evaluation_ids:
+            # Only present when used, so fingerprints of earlier aim-evaluate commands stay identical.
+            request["external_evaluation_ids"] = list(external_evaluation_ids)
         return self._execute(command_id, "evaluate_aim_as_achieved", request, invoke)
+
+    def import_external_evaluation(
+        self, aim_id, reference_id, project, external_aim_id, external_evaluation_id, external_evaluator_actor_id,
+        conclusion, imported_by_actor_id, *, command_id=None
+    ) -> ExternalEvaluation:
+        request = {"aim_id": aim_id, "reference_id": reference_id, "project": project, "external_aim_id": external_aim_id,
+                   "external_evaluation_id": external_evaluation_id, "external_evaluator_actor_id": external_evaluator_actor_id,
+                   "conclusion": conclusion, "imported_by_actor_id": imported_by_actor_id}
+        def invoke(loop):
+            external = loop.import_external_evaluation(**request)
+            return external, JournalEvent(self._event_id(), "ExternalEvaluationImported", imported_by_actor_id,
+                                          "external_evaluation", external.id, {**request, "external_evaluation_record_id": external.id})
+        return self._execute(command_id, "import_external_evaluation", request, invoke)
 
     def resolve_aim_evaluation_review(
         self, evaluation_id, impact_review_id, disposition: ReviewDisposition,
@@ -602,49 +621,55 @@ class PersistentGoalLoop:
         )
 
     def _make_trial(self):
-        loop = GoalLoop(enforce_authority=self.enforce_authority)
         snapshot_events = self.repository.latest_valid_snapshot_events()
         events = snapshot_events + self.repository.events()[len(snapshot_events):] if snapshot_events is not None else self.repository.events()
-        for event in events:
-            p = event.payload
-            if event.event_type == "AimCreated": loop.create_aim(p["description"], p.get("parent_aim_id"))
-            elif event.event_type == "AimParentLinked": loop.link_aim_parent(p["child_aim_id"], p["parent_aim_id"])
-            elif event.event_type == "ProposalCreated": loop.create_proposal(p["aim_id"], p["direction"], p.get("proposed_by_actor_id"))
-            elif event.event_type == "ProposalClosed": loop.close_proposal(p["proposal_id"], p["closure_kind"], p["actor_id"], p["reason"])
-            elif event.event_type == "GoalStopped": loop.stop_goal(p["goal_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "AimAbandoned": loop.abandon_aim(p["aim_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "ProposalSuperseded": loop.revise_proposal(p["previous_proposal_id"], p["direction"], p["actor_id"], p["reason"])
-            elif event.event_type == "ProposalAccepted": loop.accept_proposal(p["proposal_id"], GoalIdentity(**p["identity"]), ContractDraft(**p["contract"]), idempotency_key=p["idempotency_key"])
-            elif event.event_type == "AttemptStarted": loop.start_attempt(p["goal_id"], p["contract_version"], p["executor_actor_id"], p["operation"], retry_decision_id=p["retry_decision_id"], reverification_decision_id=p.get("reverification_decision_id"))
-            elif event.event_type == "AttemptCompleted": loop.complete_attempt(p["attempt_id"], AttemptOutcome(p["outcome"]))
-            elif event.event_type == "DecisionRecorded": loop.decide_same_contract_retry(p["goal_id"], p["failed_attempt_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "ExecutionGranted": loop.grant_execute(p["actor_id"], p["goal_id"])
-            elif event.event_type == "ExecutionRevoked": loop.revoke_execute(p["actor_id"], p["goal_id"])
-            elif event.event_type == "GoalHoldAdded": loop.add_goal_hold(p["goal_id"], p.get("actor_id", "system"), p.get("reason"))
-            elif event.event_type == "GoalHoldCleared": loop.clear_goal_hold(p["goal_id"])
-            elif event.event_type == "AimPaused": loop.pause_aim(p["aim_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "AimResumed": loop.resume_aim(p["aim_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "ReverificationDecisionRecorded": loop.decide_reverification_requires_new_attempt(p["goal_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "ContractVersionAdded": loop.revise_contract(p["goal_id"], ContractDraft(**p["contract"]), decided_by_actor_id=p["actor_id"], reason=p["reason"])
-            elif event.event_type == "EvidenceRecorded": loop.record_evidence(p["attempt_id"], p["actor_id"], p["observation"], tuple(EvidenceAttachment(**item) for item in p.get("attachments", [])))
-            elif event.event_type == "ReferenceAdded": loop.add_reference(p["subject_kind"], p["subject_id"], p["location"], p["actor_id"], p["label"])
-            elif event.event_type == "ReferenceRemoved": loop.remove_reference(p["reference_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "VerificationBegan": loop.begin_verification(p["goal_id"], p["attempt_id"])
-            elif event.event_type == "VerdictSubmitted": loop.submit_verdict(p["goal_id"], p["attempt_id"], p["verifier_actor_id"], VerdictResult(p["result"]), tuple(p["evidence_ids"]), supersedes_verdict_id=p["supersedes_verdict_id"], reason=p.get("reason"))
-            elif event.event_type == "VerdictDependencyAdded": loop.add_verdict_dependency(p["goal_id"], p["verdict_id"], VerdictResult(p["required_result"]))
-            # Rules added later never reject facts already in the journal.
-            elif event.event_type == "GoalParentLinked": loop.add_goal_parent(p["child_goal_id"], p["parent_goal_id"], allow_legacy_deadlock=True)
-            elif event.event_type == "GoalDependencyLinked": loop.add_goal_dependency(p["dependent_goal_id"], p["required_goal_id"], allow_legacy_deadlock=True)
-            elif event.event_type == "GoalFollowLinked": loop.add_goal_follow(p["goal_id"], p["previous_goal_id"], p["actor_id"], p["reason"])
-            elif event.event_type == "EvidenceCorrected": loop.correct_evidence(p["evidence_id"], p["actor_id"], p["observation"])
-            elif event.event_type == "VerdictReviewOpened": loop.review_verdict_after_correction(p["verdict_id"], p["correction_id"])
-            elif event.event_type == "VerdictInvalidated": loop.invalidate_verdict(p["verdict_id"])
-            elif event.event_type == "VerdictReviewResolved": loop.resolve_verdict_review(p["impact_review_id"], ReviewDisposition(p["disposition"]), p["decided_by_actor_id"], p["reason"])
-            elif event.event_type == "AimEvaluated": loop.evaluate_aim_as_achieved(p["aim_id"], p["evaluator_actor_id"], tuple(p["verdict_ids"]), p["conclusion"], tuple(p.get("child_evaluation_ids", ())))
-            elif event.event_type == "AimEvaluationReviewResolved": loop.resolve_aim_evaluation_review(p["evaluation_id"], p["impact_review_id"], ReviewDisposition(p["disposition"]), p["decided_by_actor_id"], p["reason"])
-            elif event.event_type == "AimClosureInvalidated": loop.reopen_aim_after_closure_invalidation(p["aim_id"], p["evaluation_id"], p["triggering_record_id"], p["decided_by_actor_id"], p["reason"])
-            else: raise ValueError(f"Unsupported persistent event {event.event_type!r}.")
-        return loop
+        return replay_journal(events, enforce_authority=self.enforce_authority)
 
     @staticmethod
     def _event_id(): return f"event_{uuid4().hex}"
+
+
+def replay_journal(events, *, enforce_authority: bool = False) -> GoalLoop:
+    """Rebuild the in-memory GoalLoop from journal events without touching any storage."""
+    loop = GoalLoop(enforce_authority=enforce_authority)
+    for event in events:
+        p = event.payload
+        if event.event_type == "AimCreated": loop.create_aim(p["description"], p.get("parent_aim_id"))
+        elif event.event_type == "AimParentLinked": loop.link_aim_parent(p["child_aim_id"], p["parent_aim_id"])
+        elif event.event_type == "ProposalCreated": loop.create_proposal(p["aim_id"], p["direction"], p.get("proposed_by_actor_id"))
+        elif event.event_type == "ProposalClosed": loop.close_proposal(p["proposal_id"], p["closure_kind"], p["actor_id"], p["reason"])
+        elif event.event_type == "GoalStopped": loop.stop_goal(p["goal_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "AimAbandoned": loop.abandon_aim(p["aim_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "ProposalSuperseded": loop.revise_proposal(p["previous_proposal_id"], p["direction"], p["actor_id"], p["reason"])
+        elif event.event_type == "ProposalAccepted": loop.accept_proposal(p["proposal_id"], GoalIdentity(**p["identity"]), ContractDraft(**p["contract"]), idempotency_key=p["idempotency_key"])
+        elif event.event_type == "AttemptStarted": loop.start_attempt(p["goal_id"], p["contract_version"], p["executor_actor_id"], p["operation"], retry_decision_id=p["retry_decision_id"], reverification_decision_id=p.get("reverification_decision_id"))
+        elif event.event_type == "AttemptCompleted": loop.complete_attempt(p["attempt_id"], AttemptOutcome(p["outcome"]))
+        elif event.event_type == "DecisionRecorded": loop.decide_same_contract_retry(p["goal_id"], p["failed_attempt_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "ExecutionGranted": loop.grant_execute(p["actor_id"], p["goal_id"])
+        elif event.event_type == "ExecutionRevoked": loop.revoke_execute(p["actor_id"], p["goal_id"])
+        elif event.event_type == "GoalHoldAdded": loop.add_goal_hold(p["goal_id"], p.get("actor_id", "system"), p.get("reason"))
+        elif event.event_type == "GoalHoldCleared": loop.clear_goal_hold(p["goal_id"])
+        elif event.event_type == "AimPaused": loop.pause_aim(p["aim_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "AimResumed": loop.resume_aim(p["aim_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "ReverificationDecisionRecorded": loop.decide_reverification_requires_new_attempt(p["goal_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "ContractVersionAdded": loop.revise_contract(p["goal_id"], ContractDraft(**p["contract"]), decided_by_actor_id=p["actor_id"], reason=p["reason"])
+        elif event.event_type == "EvidenceRecorded": loop.record_evidence(p["attempt_id"], p["actor_id"], p["observation"], tuple(EvidenceAttachment(**item) for item in p.get("attachments", [])))
+        elif event.event_type == "ReferenceAdded": loop.add_reference(p["subject_kind"], p["subject_id"], p["location"], p["actor_id"], p["label"])
+        elif event.event_type == "ReferenceRemoved": loop.remove_reference(p["reference_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "VerificationBegan": loop.begin_verification(p["goal_id"], p["attempt_id"])
+        elif event.event_type == "VerdictSubmitted": loop.submit_verdict(p["goal_id"], p["attempt_id"], p["verifier_actor_id"], VerdictResult(p["result"]), tuple(p["evidence_ids"]), supersedes_verdict_id=p["supersedes_verdict_id"], reason=p.get("reason"))
+        elif event.event_type == "VerdictDependencyAdded": loop.add_verdict_dependency(p["goal_id"], p["verdict_id"], VerdictResult(p["required_result"]))
+        # Rules added later never reject facts already in the journal.
+        elif event.event_type == "GoalParentLinked": loop.add_goal_parent(p["child_goal_id"], p["parent_goal_id"], allow_legacy_deadlock=True)
+        elif event.event_type == "GoalDependencyLinked": loop.add_goal_dependency(p["dependent_goal_id"], p["required_goal_id"], allow_legacy_deadlock=True)
+        elif event.event_type == "GoalFollowLinked": loop.add_goal_follow(p["goal_id"], p["previous_goal_id"], p["actor_id"], p["reason"])
+        elif event.event_type == "EvidenceCorrected": loop.correct_evidence(p["evidence_id"], p["actor_id"], p["observation"])
+        elif event.event_type == "VerdictReviewOpened": loop.review_verdict_after_correction(p["verdict_id"], p["correction_id"])
+        elif event.event_type == "VerdictInvalidated": loop.invalidate_verdict(p["verdict_id"])
+        elif event.event_type == "VerdictReviewResolved": loop.resolve_verdict_review(p["impact_review_id"], ReviewDisposition(p["disposition"]), p["decided_by_actor_id"], p["reason"])
+        elif event.event_type == "AimEvaluated": loop.evaluate_aim_as_achieved(p["aim_id"], p["evaluator_actor_id"], tuple(p["verdict_ids"]), p["conclusion"], tuple(p.get("child_evaluation_ids", ())), tuple(p.get("external_evaluation_ids", ())))
+        elif event.event_type == "ExternalEvaluationImported": loop.import_external_evaluation(p["aim_id"], p["reference_id"], p["project"], p["external_aim_id"], p["external_evaluation_id"], p["external_evaluator_actor_id"], p["conclusion"], p["imported_by_actor_id"])
+        elif event.event_type == "AimEvaluationReviewResolved": loop.resolve_aim_evaluation_review(p["evaluation_id"], p["impact_review_id"], ReviewDisposition(p["disposition"]), p["decided_by_actor_id"], p["reason"])
+        elif event.event_type == "AimClosureInvalidated": loop.reopen_aim_after_closure_invalidation(p["aim_id"], p["evaluation_id"], p["triggering_record_id"], p["decided_by_actor_id"], p["reason"])
+        else: raise ValueError(f"Unsupported persistent event {event.event_type!r}.")
+    return loop

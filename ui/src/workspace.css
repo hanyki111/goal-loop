@@ -486,3 +486,12 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 
 /* Below 1100px the page scrolls instead of the grid, so a long Aim list or inspector would stretch the row and the graph with it; keep the side panels within one screen. */
 @media(min-width:761px) and (max-width:1100px){.workspace-grid>.aim-navigator,.workspace-grid>.inspector{max-height:calc(100vh - 36px)}}
+
+/* Aim links to other projects' Aims (goal-143) */
+.aim-links { margin: 12px 0; }
+.aim-links ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.aim-link { border: 1px solid var(--line, #d7dbe0); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+.aim-link.broken { border-style: dashed; }
+.aim-link-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aim-link .secondary-action { justify-self: start; }
+.graph-node .link-summary { display: block; margin-top: 4px; font-size: 0.78em; opacity: 0.8; }

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .persistent import PersistentGoalLoop
+from .aim_links import link_records as aim_link_records
 from .ao_links import runs as ao_runs
 from . import memory_view
 from .project import attachment_path, attachment_status, resolve_reference
@@ -29,7 +30,7 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
                  "status": attachment_status(artifacts_dir, item.name, item.sha256)} for item in evidence.attachments]
 
     projection = {
-        "schema_version": 16,
+        "schema_version": 18,
         # v15: memory_drafts, timeline lines to suggest for Verdicts and Aim Evaluations the timeline does not cite yet.
         # v14: Memory Tool timeline entries citing record IDs, and excerpts of referenced .memory documents (read-only; empty without .memory).
         # v13: AO Goals linked to Goals, summarized from the AO snapshots attached to their Evidence (read-only).
@@ -137,9 +138,15 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
         # v7: retry and re-verification Decisions, so a UI can show why a run was repeated.
         "decisions": [decision.__dict__ for decision in loop.decisions.values()],
         "aim_evaluations": [
-            {**evaluation.__dict__, "child_evaluation_ids": list(evaluation.child_evaluation_ids), "validity": loop.aim_evaluation_validity[evaluation.id].value}
+            {**evaluation.__dict__, "child_evaluation_ids": list(evaluation.child_evaluation_ids),
+             "external_evaluation_ids": list(evaluation.external_evaluation_ids), "validity": loop.aim_evaluation_validity[evaluation.id].value}
             for evaluation in loop.aim_evaluations.values()
         ],
+        # v17: evaluations imported from linked Aims of other journals, as recorded here (whether they are still
+        # valid in the linked journal is read by aim-links, not by this projection).
+        "external_evaluations": [external.__dict__ for external in loop.external_evaluations.values()],
+        # v18: each Aim link with the linked Aim's current state, read from the linked journal without writing to it.
+        "aim_links": aim_link_records(loop),
         "ao_runs": ao_runs(loop, artifacts_dir) if artifacts_dir is not None else [],
         "memory_mentions": memory_view.mentions(project_root),
         "memory_documents": memory_view.documents(project_root, [reference.location for reference in loop.references.values()

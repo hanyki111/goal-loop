@@ -89,6 +89,26 @@ class AimEvaluation:
     conclusion: str
     # Valid evaluations of direct sub-Aims cited as the basis for this Aim's achievement.
     child_evaluation_ids: tuple[str, ...] = ()
+    # Evaluations imported from a linked Aim of another journal (ExternalEvaluation), cited as a basis.
+    external_evaluation_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExternalEvaluation:
+    """An Aim Evaluation of a linked Aim in another journal, copied here as a fact so this journal can cite it.
+
+    It records what the linked journal said when it was imported; whether that evaluation is still valid there
+    is read from the linked journal when shown, and never changes this record.
+    """
+    id: str
+    aim_id: str
+    reference_id: str
+    project: str
+    external_aim_id: str
+    external_evaluation_id: str
+    external_evaluator_actor_id: str
+    conclusion: str
+    imported_by_actor_id: str
 
 
 @dataclass

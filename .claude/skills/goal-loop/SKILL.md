@@ -12,10 +12,21 @@ A project keeps its journal in `<project>/.goal-loop/` (created by `project-init
 "프로젝트 폴더 열기"); any command run inside the project finds it automatically. Run `goal-loop where` to
 see which journal is in use and how it was found. `--workspace "<name>"` selects a desktop workspace by
 name when you are outside its folder; `goal-loop workspaces` lists them.
+An umbrella journal (one that plans several areas) links its Aims to Aims of other project journals with
+`aim-link-add`; the link is a reference on the Aim, the linked journal is only read, and `aim-links` shows the linked
+Aim's current state (`broken` with a reason when it cannot be followed; `doctor` lists those). Remove a link with
+`reference-remove`. When the linked Aim is achieved there, `aim-link-import <reference-id>` copies its valid evaluation
+here as `external-evaluation-N`, which `aim-evaluate` may cite; `aim-links` marks an import `still_valid: false` once the
+linked journal invalidates it (this journal's records never change by themselves).
 
 ## Safe operating order
 
 1. Start with `goal-loop next`. It is a read-only JSON projection; use its IDs and `command_argv` only as a template, never as authorization to mutate state.
+   `goal-loop next --aim <aim-id>` keeps only the actions arising from that Aim and its sub-Aims (a parent's
+   `resume_aim` stays when a Goal inside the scope caused it); use it when one journal holds several areas.
+   In a journal with Aim links, `next` also returns `linked` (each linked journal's next actions for the linked
+   Aim's subtree, with a `source` and `command_argv` pointing at that journal), `skipped` (links whose Aim here is
+   paused, abandoned, or achieved), and an `import_linked_evaluation` action when a linked Aim is achieved there.
 2. Use `goal-loop status` for a compact inventory and, when history matters, `goal-loop activity`.
 3. Explain the current state and the smallest valid next action in plain language.
 4. Create or change a durable fact only when the user authorizes that semantic action.
@@ -59,6 +70,8 @@ name when you are outside its folder; `goal-loop workspaces` lists them.
 & .\.venv\Scripts\goal-loop.exe ao-import attempt-1 "<agent name>" <ao-workspace>\projects\<project-id> <ao-goal-id>
 & .\.venv\Scripts\goal-loop.exe ao-attempt-start goal-1 1 "<agent name>" "run in AO" --ao-project-id <id> --ao-goal-id <slug> --ao-workspace <ao-workspace>
 & .\.venv\Scripts\goal-loop.exe ao-links --goal goal-1
+& .\.venv\Scripts\goal-loop.exe aim-link-add aim-1 --workspace "<name>" --external-aim aim-3 --actor "<agent name>"
+& .\.venv\Scripts\goal-loop.exe aim-links --aim aim-1
 & .\.venv\Scripts\goal-loop.exe status
 & .\.venv\Scripts\goal-loop.exe next
 & .\.venv\Scripts\goal-loop.exe admission
@@ -164,6 +177,8 @@ before starting work.
   the Contract or Aim criteria, the Evidence, and the partial-satisfaction rules, and fix its answer with a
   schema. Record its report as Evidence under its name, then record its result unchanged under its name
   with `--reason`. Never judge your own execution, and never record under the user's name.
+  A project's `.goal-loop/judging.json` may set `copy_exclude`, `attachments_only`, and `rules` (`code` or
+  `notes` for work that is not code); command-line choices override it.
 
 **Session end.** Do not leave an Attempt `running` silently: complete it with its observed outcome, or
 tell the user it is still running and why.
@@ -199,7 +214,11 @@ an accepted approach routes changes to Contract revision or a new Proposal. Afte
 records a retry as a retry Decision followed by a new Attempt, exactly as the CLI does. Evidence
 cited by a Verdict can be corrected from the UI, which opens the same Impact Review flow; 검토함
 shows it, and 실행 대기함 shows only Runtime outbox delivery state. Hiding records is a local display
-preference, not a journal fact. `ui-projection` is schema version 16 (v16 adds `follows` edges: a Goal built on or continuing an earlier Goal, with actor and reason, drawn as 이어받음; v15 adds `memory_drafts`: a suggested timeline line and `python -m memory_tool record` command for each valid Verdict or Aim Evaluation the timeline does not cite yet, also printed by `memory-draft` and returned by `delegated_judging` as `memory_draft`; Goal Loop never writes the knowledge folder; v14 adds `memory_mentions` and `memory_documents`: Memory Tool timeline entries citing record IDs and excerpts of referenced `.memory` documents, read-only and empty without Memory Tool content; the knowledge folder is found as Memory Tool finds it — `.memory` by default, renamed by the project's `.memory-tool.yml` (`base:`) or `MEMORY_TOOL_BASE`, or the project root itself (`base: "."`), shown in the details' "메모리 기록" section and reference previews; v13 adds `ao_runs`: each AO Goal linked to a Goal, summarized from the AO snapshots in the journal, shown in the Goal detail's "AO 실행" section, including the `completion:advisory` judgments an `ao_cli.v1` run (always started with `--external-verdict`) recorded instead of blocking completion; v12 adds Verdict reasons; v11 and earlier add `contract_history`,
+preference, not a journal fact. `ui-projection` is schema version 18 (v18 adds `aim_links`: each Aim link with the linked Aim's state as
+`aim-links` reports it, shown in the app's Aim detail "연결된 목표" with a button that opens the linked project, and as a
+link summary on graph Aim cards; v17 adds `external_evaluations`: evaluations imported from linked Aims of other
+journals with `aim-link-import`, citable by `aim-evaluate` as `external-evaluation-*`, and `external_evaluation_ids` on Aim
+Evaluations; v16 adds `follows` edges: a Goal built on or continuing an earlier Goal, with actor and reason, drawn as 이어받음; v15 adds `memory_drafts`: a suggested timeline line and `python -m memory_tool record` command for each valid Verdict or Aim Evaluation the timeline does not cite yet, also printed by `memory-draft` and returned by `delegated_judging` as `memory_draft`; Goal Loop never writes the knowledge folder; v14 adds `memory_mentions` and `memory_documents`: Memory Tool timeline entries citing record IDs and excerpts of referenced `.memory` documents, read-only and empty without Memory Tool content; the knowledge folder is found as Memory Tool finds it — `.memory` by default, renamed by the project's `.memory-tool.yml` (`base:`) or `MEMORY_TOOL_BASE`, or the project root itself (`base: "."`), shown in the details' "메모리 기록" section and reference previews; v13 adds `ao_runs`: each AO Goal linked to a Goal, summarized from the AO snapshots in the journal, shown in the Goal detail's "AO 실행" section, including the `completion:advisory` judgments an `ao_cli.v1` run (always started with `--external-verdict`) recorded instead of blocking completion; v12 adds Verdict reasons; v11 and earlier add `contract_history`,
 `decisions`, `evidence_corrections`, `impact_reviews`, closure/attribution facts, `project_root`,
 references, Evidence attachments, the Aim tree, and sub-Aim evaluation citations). Runtime dispatch remains an explicit
 CLI/operator action.

@@ -228,7 +228,7 @@ describe('Goal Loop workspace components', () => {
     const goals = [{ ...base, id: 'goal-1', aim_id: 'aim-1', phase: 'verified', target: '시장 조사' }, { ...base, id: 'goal-2', aim_id: 'aim-1', phase: 'stopped', target: '규칙 추출' },
       { ...base, id: 'goal-3', aim_id: 'aim-2', phase: 'committed', target: 'LLM 추출' }, { ...base, id: 'goal-4', aim_id: 'aim-2', phase: 'committed', target: '수요 검증' }];
     const data = { aims: [{ id: 'aim-1', description: '목표', phase: 'open', paused: false, currently_achieved: false }, { id: 'aim-2', description: '공고 해석 서비스', phase: 'open', paused: false, currently_achieved: false, parent_aim_id: 'aim-1' }],
-      proposals: [], goals, attempts: [], verdicts: [], evidence: [], aim_evaluations: [], schema_version: 16, nodes: [],
+      proposals: [], goals, attempts: [], verdicts: [], evidence: [], aim_evaluations: [], schema_version: 18, nodes: [],
       edges: [{ id: 'follows:goal-1:goal-2', source: 'goal-1', target: 'goal-2', kind: 'follows', actor_id: 'claude', reason: '조사 결론 C2에서 시작' },
         { id: 'follows:goal-2:goal-3', source: 'goal-2', target: 'goal-3', kind: 'follows', actor_id: 'claude', reason: '규칙 추출이 일반화에 실패해 이어받음' }] };
     const calls: Array<[string, string[]]> = [];

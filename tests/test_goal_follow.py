@@ -89,7 +89,7 @@ class GoalFollowTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["action"], "goal_follow_linked")
         loop = PersistentGoalLoop(SqliteEventRepository(self.path))
         projection = goal_graph_projection(loop)
-        self.assertEqual(projection["schema_version"], 16)
+        self.assertEqual(projection["schema_version"], 18)
         self.assertIn(
             {"id": f"follows:{earlier.id}:{later.id}", "source": earlier.id, "target": later.id, "kind": "follows", "actor_id": "claude", "reason": "continues <earlier>"},
             projection["edges"],

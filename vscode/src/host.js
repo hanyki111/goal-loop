@@ -13,7 +13,7 @@ const UI_COMMANDS = [
   'verdict-review-resolve', 'aim-evaluation-review-resolve', 'aim-closure-invalidate',
   'aim-pause', 'aim-resume', 'goal-hold-add', 'goal-hold-clear', 'goal-parent-add', 'goal-follow-add',
   'goal-dependency-add', 'proposal-close', 'goal-stop', 'aim-abandon',
-  'reference-add', 'reference-remove', 'aim-parent-add',
+  'reference-add', 'reference-remove', 'aim-parent-add', 'aim-link-import',
 ];
 const READS = { ui_projection: 'ui-projection', next_actions: 'next', reviews: 'reviews', admission: 'admission', runtime_requests: 'runtime-requests' };
 const CLI_TIMEOUT_MS = 120_000;

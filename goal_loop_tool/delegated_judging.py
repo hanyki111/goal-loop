@@ -21,6 +21,7 @@ the user's own settings (``.goal-loop/judges.json``), which are passed only to t
 from __future__ import annotations
 
 import argparse
+import fnmatch
 from contextlib import nullcontext, redirect_stdout
 from dataclasses import dataclass, field
 from io import StringIO
@@ -76,8 +77,75 @@ commit을 따라가 원본을 열지 마라(첨부된 patch는 읽어도 된다)
 판단할 수 있었는지 적어라."""
 
 
+NOTES_RULES = """## 이 프로젝트의 판정 방식: 코드가 아닌 일
+
+이 프로젝트의 과제와 목표는 연구, 학습, 취미처럼 코드가 아닌 일이다. 테스트를 다시 실행하는 대신, 관찰 근거의 본문과 첨부,
+과제와 목표에 연결된 참조 문서, 사본 안의 노트(예: .memory의 문서)를 직접 읽어 각 기준을 판정한다. 결과물이 노트나 문서라면
+그 문서가 기준이 요구하는 내용을 실제로 담고 있는지 원문에서 확인한다. 실행자의 요약만으로 충족이라 하지 말고, 원문을 찾을 수
+없으면 cannot_judge로 두고 무엇이 있었으면 판단할 수 있었는지 적는다. 위의 판정 규칙(결과 세 가지, 항목별 판정)은 그대로 적용한다.
+아래에 '첨부만 사용' 제약이 함께 있으면 그 제약이 우선한다. 그때는 사본 안의 노트와 참조 문서도 열지 않는다."""
+
+JUDGING_FILE = "judging.json"
+JUDGING_RULES = ("code", "notes")
+
+
 class JudgingError(RuntimeError):
     """The judgment could not be prepared, produced, or recorded."""
+
+
+@dataclass(frozen=True)
+class JudgingConfig:
+    """A project's own judging settings from ``.goal-loop/judging.json``; the defaults are the behavior without the file."""
+    source: Path | None = None
+    copy_exclude: tuple[str, ...] = ()
+    attachments_only: bool = False
+    rules: str = "code"
+
+    def summary(self, attachments_only: bool | None = None) -> dict:
+        return {"judging_config": str(self.source) if self.source else None, "copy_exclude": list(self.copy_exclude),
+                "attachments_only": self.attachments_only if attachments_only is None else attachments_only, "rules": self.rules}
+
+
+def judging_config(database: Path) -> JudgingConfig:
+    """Read and check ``.goal-loop/judging.json`` before any copy is made; a mistake names the file."""
+    source = Path(database).parent / JUDGING_FILE
+    if not source.is_file():
+        return JudgingConfig()
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise JudgingError(f"{source}를 읽지 못했습니다: {error}") from error
+    if not isinstance(data, dict):
+        raise JudgingError(f"{source}는 JSON 객체여야 합니다.")
+    unknown = sorted(set(data) - {"copy_exclude", "attachments_only", "rules"})
+    if unknown:
+        raise JudgingError(f"{source}에 알 수 없는 키가 있습니다: {', '.join(unknown)} (쓸 수 있는 키: copy_exclude, attachments_only, rules)")
+    exclude = data.get("copy_exclude", [])
+    if not isinstance(exclude, list) or not all(isinstance(item, str) and item.strip("/ ") for item in exclude):
+        raise JudgingError(f"{source}의 copy_exclude는 비어 있지 않은 문자열의 목록이어야 합니다.")
+    attachments_only = data.get("attachments_only", False)
+    if not isinstance(attachments_only, bool):
+        raise JudgingError(f"{source}의 attachments_only는 true 또는 false여야 합니다.")
+    rules = data.get("rules", "code")
+    if rules not in JUDGING_RULES:
+        raise JudgingError(f"{source}의 rules는 {' 또는 '.join(JUDGING_RULES)}여야 합니다: {rules!r}")
+    return JudgingConfig(source, tuple(item.strip("/") for item in exclude), attachments_only, rules)
+
+
+def copy_ignore(root: Path, patterns: tuple[str, ...] = ()):
+    """COPY_IGNORE plus the project's patterns: one with '/' matches the path from the project root, one without matches any name."""
+    root = Path(root)
+
+    def ignore(directory, names):
+        ignored = set(COPY_IGNORE(directory, names))
+        if patterns:
+            relative = Path(directory).relative_to(root).as_posix()
+            for name in names:
+                path = name if relative == "." else f"{relative}/{name}"
+                if any(fnmatch.fnmatch(path if "/" in pattern else name, pattern) for pattern in patterns):
+                    ignored.add(name)
+        return ignored
+    return ignore
 
 
 def cli(database: Path, *args: str) -> dict:
@@ -126,10 +194,11 @@ def _link_tree_dependencies(source: Path, copy: Path) -> None:
             _link(target, modules)
 
 
-def prepare_workspace(project_root: Path, database: Path, base: Path | None = None, trees: dict[str, Path] | None = None) -> Workspace:
+def prepare_workspace(project_root: Path, database: Path, base: Path | None = None, trees: dict[str, Path] | None = None,
+                      copy_exclude: tuple[str, ...] = ()) -> Workspace:
     root = Path(tempfile.mkdtemp(prefix="goal-loop-judge-", dir=base))
     copy = root / "project"
-    shutil.copytree(project_root, copy, ignore=COPY_IGNORE)
+    shutil.copytree(project_root, copy, ignore=copy_ignore(project_root, copy_exclude))
     _link_dependencies(project_root, copy)
     copied_db = copy / PROJECT_DIRNAME / "journal.sqlite3"
     cli(database, "backup", str(copied_db))
@@ -185,7 +254,8 @@ def _tree_notes(ws: Workspace) -> str:
                              "git 이력이 필요하면 첨부된 patch를 읽어라.")
 
 
-def goal_prompt(projection: dict, goal_id: str, ws: Workspace, *, attachments_only: bool, note: str, evidence_ids: list[str]) -> tuple[str, str, str | None]:
+def goal_prompt(projection: dict, goal_id: str, ws: Workspace, *, attachments_only: bool, note: str, evidence_ids: list[str],
+                rules: str = "code") -> tuple[str, str, str | None]:
     """Return (prompt, attempt_id, verdict to supersede) for the Goal's verifying Attempt."""
     goal = next((item for item in projection["goals"] if item["id"] == goal_id), None)
     if goal is None or goal["phase"] != "verifying" or not goal.get("verifying_attempt_id"):
@@ -200,7 +270,7 @@ def goal_prompt(projection: dict, goal_id: str, ws: Workspace, *, attachments_on
     history = "\n".join(f"- {v['id']} ({v['attempt_id']}): {v['result']}, 검증자 {v['verifier_actor_id']}\n  이유: {v.get('reason') or ''}" for v in prior) or "없음"
     prompt = f"""당신은 Goal Loop 과제 {goal_id}의 독립 검증자입니다. 이 과제는 다른 agent가 실행했고, 사용자가 당신의 판정을 그대로 검증 판단으로 기록하도록 위임했습니다(Decision 6). 실행자의 요약을 믿지 말고, 파일을 직접 읽고 명령을 직접 실행해 Contract의 성공 기준만으로 판정하십시오.
 
-{RULES}
+{RULES}{(chr(10) * 2 + NOTES_RULES) if rules == 'notes' else ''}
 
 {ATTACHMENTS_ONLY if attachments_only else ''}
 
@@ -232,7 +302,7 @@ def goal_prompt(projection: dict, goal_id: str, ws: Workspace, *, attachments_on
     return prompt, attempt_id, supersedes
 
 
-def aim_prompt(projection: dict, aim_id: str, ws: Workspace, *, note: str) -> str:
+def aim_prompt(projection: dict, aim_id: str, ws: Workspace, *, note: str, rules: str = "code") -> str:
     aim = next((item for item in projection["aims"] if item["id"] == aim_id), None)
     if aim is None:
         raise JudgingError(f"목표를 찾을 수 없습니다: {aim_id}")
@@ -253,14 +323,24 @@ def aim_prompt(projection: dict, aim_id: str, ws: Workspace, *, note: str) -> st
     lines += ["", "### 하위 목표와 달성 평가"]
     lines += [f"- {child['id']} [{child['phase']}] {child['description']}" for child in children] or ["없음"]
     lines += [f"  - {e['id']} ({e['aim_id']}, {e['validity']}): {e['conclusion'].splitlines()[0]}" for e in projection["aim_evaluations"] if any(e["aim_id"] == c["id"] for c in children)]
+    imported = [item for item in projection.get("external_evaluations") or [] if item["aim_id"] == aim_id]
+    if imported:
+        # Only when there are some, so prompts of Aims without links stay as they were (goal-141).
+        lines += ["", "### 연결된 목표에서 가져온 달성 평가(다른 저널에서 판정된 평가)"]
+        lines += [f"- {item['id']}: {item['project']}의 {item['external_aim_id']}에 대한 {item['external_evaluation_id']} "
+                  f"(평가자 {item['external_evaluator_actor_id']})\n    결론: " + item["conclusion"].replace("\n", "\n    ") for item in imported]
+    citable = "인용할 수 있는 것은 이 목표의 과제에 대한 유효(valid)한 satisfied 검증 판단과, 직접 하위 목표의 유효한 달성 평가뿐이다."
+    if imported:
+        citable = ("인용할 수 있는 것은 이 목표의 과제에 대한 유효(valid)한 satisfied 검증 판단, 직접 하위 목표의 유효한 달성 평가, "
+                   "그리고 이 목표에 가져온 달성 평가(external-evaluation-*)뿐이다.")
     return f"""당신은 Goal Loop 목표 {aim_id}의 달성 평가자입니다. 사용자가 당신의 평가를 그대로 목표 달성 평가로 기록하도록 위임했습니다(Decision 6).
 
 ## 평가 규칙
 
 - 목표의 달성 기준은 그 목표의 첫 접근안(또는 그것을 대체한 접근안)에 적혀 있다. 기준 항목마다 met / not_met / cannot_judge와 근거를 적는다.
 - 과제가 검증됐다고 목표가 저절로 달성되지는 않는다. 검증 판단과 관찰 근거가 각 기준을 실제로 뒷받침하는지 판단하라.
-- 인용할 수 있는 것은 이 목표의 과제에 대한 유효(valid)한 satisfied 검증 판단과, 직접 하위 목표의 유효한 달성 평가뿐이다. achieved가 true일 때 cited에 그 ID를 적는다.
-- 모든 기준이 met일 때만 achieved는 true다. conclusion에는 항목별 판단을 "(1) 충족: …" 형식으로 줄을 나눠 쓰고 해석을 밝힌다.
+- {citable} achieved가 true일 때 cited에 그 ID를 적는다.
+- 모든 기준이 met일 때만 achieved는 true다. conclusion에는 항목별 판단을 "(1) 충족: …" 형식으로 줄을 나눠 쓰고 해석을 밝힌다.{(chr(10) * 2 + NOTES_RULES) if rules == 'notes' else ''}
 
 {environment_notes(ws)}
 
@@ -502,20 +582,25 @@ def _observation(header: str, answer: dict) -> str:
     ])
 
 
-def judge_goal(database: Path, goal_id: str, *, agent: str = "codex", recorder: str = "claude", attachments_only: bool = False,
+def judge_goal(database: Path, goal_id: str, *, agent: str = "codex", recorder: str = "claude", attachments_only: bool | None = None,
                note: str = "", evidence_ids: list[str] | None = None, record: bool = True, runner: Runner = codex_runner,
                base: Path | None = None, trees: dict[str, Path] | None = None) -> dict:
+    """attachments_only None follows the project's judging.json; True or False (a command-line choice) overrides it."""
     root = project_root_for(database)
     if root is None:
         raise JudgingError("프로젝트 폴더의 journal(.goal-loop/journal.sqlite3)에서만 위임 판정을 실행합니다.")
-    ws = prepare_workspace(root, database, base, trees)
+    config = judging_config(database)
+    attachments_only = config.attachments_only if attachments_only is None else attachments_only
+    ws = prepare_workspace(root, database, base, trees, config.copy_exclude)
     projection = cli(ws.database, "ui-projection")
-    prompt, attempt_id, supersedes = goal_prompt(projection, goal_id, ws, attachments_only=attachments_only, note=note, evidence_ids=evidence_ids or [])
+    prompt, attempt_id, supersedes = goal_prompt(projection, goal_id, ws, attachments_only=attachments_only, note=note,
+                                                 evidence_ids=evidence_ids or [], rules=config.rules)
     _refuse_own_work(projection, attempt_id, agent)
     answer, files = _run_agent(prompt, VERDICT_SCHEMA, ws, goal_id, runner)
     if answer.get("result") not in VERDICT_SCHEMA["properties"]["result"]["enum"]:
         raise JudgingError(f"판정 결과를 알 수 없습니다: {answer.get('result')}")
-    summary = {"workspace": str(ws.root), "goal": goal_id, "attempt": attempt_id, "result": answer["result"], "recorded": False}
+    summary = {"workspace": str(ws.root), "goal": goal_id, "attempt": attempt_id, "result": answer["result"], "recorded": False,
+               **config.summary(attachments_only)}
     if not record:
         return summary
     header = f"{agent} 독립 판정(delegated_judging, 프로젝트 사본 {ws.root}{', 첨부만 사용' if attachments_only else ''}). 결과: {answer['result']}. 기록은 {recorder}가 대행."
@@ -541,18 +626,22 @@ def judge_aim(database: Path, aim_id: str, *, agent: str = "codex", note: str = 
     root = project_root_for(database)
     if root is None:
         raise JudgingError("프로젝트 폴더의 journal(.goal-loop/journal.sqlite3)에서만 위임 판정을 실행합니다.")
-    ws = prepare_workspace(root, database, base, trees)
+    config = judging_config(database)
+    ws = prepare_workspace(root, database, base, trees, config.copy_exclude)
     projection = cli(ws.database, "ui-projection")
-    answer, files = _run_agent(aim_prompt(projection, aim_id, ws, note=note), AIM_SCHEMA, ws, aim_id, runner)
+    answer, files = _run_agent(aim_prompt(projection, aim_id, ws, note=note, rules=config.rules), AIM_SCHEMA, ws, aim_id, runner)
     summary = {"workspace": str(ws.root), "aim": aim_id, "achieved": bool(answer.get("achieved")), "recorded": False,
-               "conclusion": answer.get("conclusion", ""), "answer": str(files[0])}
+               "conclusion": answer.get("conclusion", ""), "answer": str(files[0]),
+               **config.summary(attachments_only=False)}  # an Aim is judged from its records; attachments-only applies to Goals
     if not (record and answer.get("achieved")):
         return summary
-    # Only citations Core can accept: valid satisfied Verdicts of this Aim's Goals and valid evaluations of direct sub-Aims.
+    # Only citations Core can accept: valid satisfied Verdicts of this Aim's Goals, valid evaluations of direct sub-Aims,
+    # and evaluations imported for this Aim from linked journals.
     goals = {item["id"] for item in projection["goals"] if item["aim_id"] == aim_id}
     children = {item["id"] for item in projection["aims"] if item.get("parent_aim_id") == aim_id}
     allowed = {v["id"] for v in projection["verdicts"] if v["goal_id"] in goals and v["result"] == "satisfied" and v["validity"] == "valid"}
     allowed |= {e["id"] for e in projection["aim_evaluations"] if e["aim_id"] in children and e["validity"] == "valid"}
+    allowed |= {e["id"] for e in projection.get("external_evaluations") or [] if e["aim_id"] == aim_id}
     cited = [item for item in answer.get("cited", []) if item in allowed]
     if not cited:
         return {**summary, "note": "인용할 수 있는 판정이 없어 기록하지 않았습니다."}
@@ -576,7 +665,8 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="kind", required=True)
     goal = sub.add_parser("goal", help="judge the verifying Attempt of a Goal")
     goal.add_argument("id")
-    goal.add_argument("--attachments-only", action="store_true", help="judge from Evidence and attachments only")
+    goal.add_argument("--attachments-only", action=argparse.BooleanOptionalAction, default=None,
+                      help="judge from Evidence and attachments only (default: attachments_only in .goal-loop/judging.json, else off)")
     goal.add_argument("--evidence", nargs="*", default=[], help="Earlier Evidence of the same Goal to show in addition to the verifying Attempt's (always shown)")
     aim = sub.add_parser("aim", help="judge whether an Aim is achieved")
     aim.add_argument("id")
