@@ -487,11 +487,45 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 /* Below 1100px the page scrolls instead of the grid, so a long Aim list or inspector would stretch the row and the graph with it; keep the side panels within one screen. */
 @media(min-width:761px) and (max-width:1100px){.workspace-grid>.aim-navigator,.workspace-grid>.inspector{max-height:calc(100vh - 36px)}}
 
-/* Aim links to other projects' Aims (goal-143) */
-.aim-links { margin: 12px 0; }
-.aim-links ul { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
-.aim-link { border: 1px solid var(--line, #d7dbe0); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
-.aim-link.broken { border-style: dashed; }
-.aim-link-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.aim-link .secondary-action { justify-self: start; }
+/* Aim links to other projects' Aims (goal-143); sizes follow the detail pane's steps: 14 heading, 13 body, 12 note (goal-147) */
+.aim-links { margin: calc(4px * var(--ui-scale)) 0; }
+.aim-links h3 { margin: 0 0 calc(4px * var(--ui-scale)); font-size: calc(14px * var(--ui-scale)); }
+.aim-links ul { list-style: none; padding: 0; margin: calc(8px * var(--ui-scale)) 0 0; display: grid; gap: calc(8px * var(--ui-scale)); }
+.aim-link-project { border: 1px solid #dfe5ef; border-radius: 10px; overflow: hidden; display: grid; font-size: calc(13px * var(--ui-scale)); background: #fff; }
+.aim-link-project.broken { border-style: dashed; border-color: #fca5a5; }
+.aim-link-heading { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--ui-scale)); padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)); background: #f8fafc; border-bottom: 1px solid #e5eaf2; }
+.aim-link-title { display: flex; align-items: center; gap: calc(6px * var(--ui-scale)); min-width: 0; }
+.aim-link-name { font-size: calc(13px * var(--ui-scale)); color: #1e293b; overflow-wrap: anywhere; }
+.aim-link-open { flex: none; font-size: calc(12px * var(--ui-scale)); font-weight: 600; padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale)); color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 999px; }
+.aim-link-open:hover:not(:disabled) { background: #e0e7ff; }
+.aim-link-open:disabled { color: #94a3b8; background: #f1f5f9; border-color: #e2e8f0; cursor: default; }
+.aim-link-summary { margin: 0; padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0; font-size: calc(12px * var(--ui-scale)); color: #64748b; }
+.aim-link-summary b { color: #334155; }
+/* Only the open button is indigo; counts stand out by weight, not by another accent (goal-150) */
+.aim-link-summary b.live, .aim-link-meta small.live { color: #1e293b; font-weight: 700; }
+.aim-links ul.aim-link-aims { margin: 0; padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(6px * var(--ui-scale)); gap: 0; }
+.aim-link { display: grid; gap: calc(3px * var(--ui-scale)); padding: calc(7px * var(--ui-scale)) 0; border-top: 1px solid #f1f5f9; }
+.aim-link:first-child { border-top: 0; }
+.aim-link-row { display: flex; align-items: baseline; gap: calc(6px * var(--ui-scale)); line-height: 1.45; }
+.aim-link-id { flex: none; font-family: ui-monospace, monospace; font-size: calc(11px * var(--ui-scale)); color: #475569; background: #f1f5f9; border-radius: 4px; padding: 0 calc(5px * var(--ui-scale)); }
+.aim-link-text { color: #1e293b; }
+.aim-link-meta { display: flex; align-items: center; flex-wrap: wrap; gap: calc(6px * var(--ui-scale)); }
+.aim-link-meta small { font-size: calc(12px * var(--ui-scale)); color: #64748b; }
+.aim-link-project p { margin: 0; }
+.aim-link-project > .inline-warning { margin: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale)); font-size: calc(12px * var(--ui-scale)); }
+.aim-link .inline-warning { font-size: calc(12px * var(--ui-scale)); }
+/* The shared .state-badge fixes 10px with !important; badges in the detail pane use 11px x --ui-scale (goal-149 repair) */
+.aim-links .state-badge { font-style: normal; font-size: calc(11px * var(--ui-scale)) !important; display: inline-flex !important; }
+/* .state-badge sets its text colour with !important elsewhere, so the link states need it too (goal-149) */
+.aim-links .state-badge.link-open { background: #e0f2fe !important; color: #075985 !important; }
+.aim-links .state-badge.link-achieved { background: #dcfce7 !important; color: #166534 !important; }
+.aim-links .state-badge.link-paused { background: #fef3c7 !important; color: #92400e !important; }
+.aim-links .state-badge.link-abandoned { background: #f1f5f9 !important; color: #64748b !important; }
+.aim-links .state-badge.link-evaluation_invalidated, .aim-links .state-badge.link-broken { background: #fee2e2 !important; color: #991b1b !important; }
+.linked-extra { margin-top: calc(-4px * var(--ui-scale)); }
+.linked-extra-add { font-size: calc(12px * var(--ui-scale)); color: #64748b; }
+.linked-extra-add:hover { color: #334155; }
 .graph-node .link-summary { display: block; margin-top: 4px; font-size: 0.78em; opacity: 0.8; }
+/* Reference list text follows the same steps (goal-147) */
+.reference-list li { font-size: calc(13px * var(--ui-scale)); }
+.reference-list li > small, .reference-list .link-button small { font-size: calc(12px * var(--ui-scale)); }

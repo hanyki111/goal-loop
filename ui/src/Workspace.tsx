@@ -578,14 +578,29 @@ export function linkSummary(links: AimLink[]) {
 
 export function AimLinkSection({ links, onOpenProject }: { links: AimLink[]; onOpenProject?: (folder: string) => void }) {
   if (!links.length) return null;
-  return <section className="aim-links" aria-label="연결된 목표"><h3>연결된 목표</h3><p className="tab-hint">이 목표는 다른 프로젝트의 목표로 진행합니다. 상태는 그 프로젝트의 기록에서 읽어 오며, 이 화면에서는 바꾸지 않습니다.</p><ul>{links.map(link => {
-    const stale = link.imported_evaluations.filter(item => item.still_valid === false);
-    return <li key={link.reference_id} className={`aim-link ${link.state}`}><div className="aim-link-heading"><strong>{projectName(link.project)}</strong><em className={`state-badge link-${link.state}`}>{LINK_STATE_NAMES[link.state] ?? link.state}</em></div>
-      {link.state === 'broken' ? <p className="inline-warning">연결을 따라갈 수 없습니다: {link.reason}</p> : <p>{link.external_aim_description} <small className="node-id">{link.external_aim_id}</small></p>}
-      {link.state !== 'broken' && <small>진행 중인 과제 {link.live_goal_ids?.length ?? 0}개{link.paused_by ? ` · ${link.paused_by}에서 멈춤` : ''}</small>}
-      {link.imported_evaluations.length > 0 && <small>가져온 달성 평가 {link.imported_evaluations.length}개</small>}
-      {stale.length > 0 && <p className="inline-warning">가져온 평가 {stale.map(item => item.external_evaluation_id).join(', ')}이 그 프로젝트에서 무효가 되었습니다. 이 목표의 기록은 자동으로 바뀌지 않으니, 달성 평가를 다시 검토하세요.</p>}
-      <button type="button" className="secondary-action" disabled={link.state === 'broken' || !onOpenProject} onClick={() => onOpenProject?.(link.project)}>이 프로젝트로 이동</button>
+  // One card per linked project: a Sub-Aim linked to several Aims of one project shows the project and its button once (goal-148).
+  const projects = new Map<string, AimLink[]>();
+  for (const link of links) {
+    const key = link.project.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
+    projects.set(key, [...(projects.get(key) ?? []), link]);
+  }
+  return <section className="aim-links" aria-label="연결된 목표"><h3>연결된 목표</h3><p className="tab-hint">이 목표는 다른 프로젝트의 목표로 진행합니다. 상태는 그 프로젝트의 기록에서 읽어 오며, 이 화면에서는 바꾸지 않습니다.</p><ul>{[...projects.values()].map(items => {
+    // The whole project is unreadable (folder or journal missing) when every link is broken for a reason other than a missing Aim.
+    const unreadable = items.every(link => link.state === 'broken' && !(link.reason ?? '').startsWith('하위 저널에 Aim'));
+    const live = items.reduce((total, link) => total + (link.state === 'broken' ? 0 : link.live_goal_ids?.length ?? 0), 0);
+    return <li key={items[0].reference_id} className={`aim-link-project ${unreadable ? 'broken' : ''}`}>
+      <div className="aim-link-heading"><span className="aim-link-title"><strong className="aim-link-name">{projectName(items[0].project)}</strong>{unreadable && <em className="state-badge link-broken">연결 끊김</em>}</span><button type="button" className="aim-link-open" disabled={unreadable || !onOpenProject} onClick={() => onOpenProject?.(items[0].project)}>이 프로젝트로 이동 →</button></div>
+      {unreadable ? <p className="inline-warning">연결을 따라갈 수 없습니다: {items[0].reason}</p> : <>
+        <p className="aim-link-summary">연결된 목표 <b>{items.length}</b>개 · 진행 중인 과제 <b className={live ? 'live' : ''}>{live}</b>개</p>
+        <ul className="aim-link-aims">{items.map(link => {
+          const stale = link.imported_evaluations.filter(item => item.still_valid === false);
+          const count = link.live_goal_ids?.length ?? 0;
+          return <li key={link.reference_id} className={`aim-link ${link.state}`}>
+            <div className="aim-link-row"><code className="aim-link-id">{link.external_aim_id}</code>{link.state !== 'broken' && <span className="aim-link-text">{link.external_aim_description}</span>}</div>
+            <div className="aim-link-meta"><em className={`state-badge link-${link.state}`}>{LINK_STATE_NAMES[link.state] ?? link.state}</em>{link.state === 'broken' ? <small>{link.reason}</small> : <small className={count ? 'live' : ''}>진행 중인 과제 {count}개{link.paused_by ? ` · ${link.paused_by}에서 멈춤` : ''}{link.imported_evaluations.length ? ` · 가져온 달성 평가 ${link.imported_evaluations.length}개` : ''}</small>}</div>
+            {stale.length > 0 && <p className="inline-warning">가져온 평가 {stale.map(item => item.external_evaluation_id).join(', ')}이 그 프로젝트에서 무효가 되었습니다. 이 목표의 기록은 자동으로 바뀌지 않으니, 달성 평가를 다시 검토하세요.</p>}
+          </li>; })}</ul>
+      </>}
     </li>; })}</ul></section>;
 }
 
@@ -926,6 +941,8 @@ export function AimInspector({ aim, focus, data, busy, onSelect, submit, onArchi
   // An Aim split into sub-Aims advances through them; its own approach stage is optional, not "current".
   // An Aim linked to another project's Aim advances there, the same way (goal-143).
   const linkedOnly = (data.aim_links ?? []).some(link => link.aim_id === aim.id) && proposals.length === 0 && goals.length === 0;
+  // A linked Aim with nothing of its own advances in the linked project: no stage tabs, only a small way to add local work (goal-151).
+  const linkOnlyView = linkedOnly && subAims.length === 0 && evaluations.length === 0 && aim.phase === 'open';
   const splitOnly = (subAims.length > 0 || linkedOnly) && proposals.length === 0 && goals.length === 0;
   const subAimAchieved = subAims.some(item => data.aim_evaluations.some(evaluation => evaluation.aim_id === item.id && evaluation.validity === 'valid'));
   const stage = evaluations.length || goals.some(goal => goal.phase === 'verified') || subAimAchieved ? 3 : openApproaches.length || liveGoals.length ? 2 : 1;
@@ -946,7 +963,9 @@ export function AimInspector({ aim, focus, data, busy, onSelect, submit, onArchi
       : splitOnly && subAims.length > 0 && isOpen && childActions.length === 0 ? <section className="context-action child-actions"><span className="eyebrow">지금 할 일</span><p>이 목표는 하위 목표로 나누어 진행합니다. 하위 목표를 골라 이어서 진행하세요.</p>{subAims.filter(item => item.phase === 'open').map(item => <button type="button" className="next-summary-item" key={item.id} onClick={() => onSelect({ kind: 'aim', id: item.id })}><strong>{item.description}</strong><small>하위 목표{item.paused ? ' · 잠시 멈춤' : ''}</small></button>)}</section>
       : childActions.length > 0 && <section className="context-action child-actions"><span className="eyebrow">지금 할 일</span><p>다음 행동은 아래 항목에서 이어집니다.</p>{childActions.map(action => { const scope = actionScope(data, action); const goal = data.goals.find(item => item.id === scope.goalId); const proposal = data.proposals.find(item => item.id === scope.proposalId); return <button type="button" className="next-summary-item" key={`${action.kind}:${action.subject.id}`} onClick={() => onSelect(goal ? { kind: 'goal', id: goal.id } : { kind: 'proposal', id: proposal?.id ?? action.subject.id })}><strong>{actionTitle(action.kind)}</strong><small>{goal ? `과제 — ${goal.target}` : `접근안 — ${proposal?.direction ?? ''}`}</small></button>; })}</section>}
     <AimLinkSection links={(data.aim_links ?? []).filter(link => link.aim_id === aim.id)} onOpenProject={onOpenProject} />
+    {linkOnlyView && <div className="linked-extra">{addingProposal ? <div className="inline-composer">{proposalForm}</div> : <button type="button" className="link-button linked-extra-add" onClick={() => setAddingProposal(true)}>＋ 이 프로젝트에서 따로 할 일 추가</button>}</div>}
     {criteria.length > 0 && <section className="aim-criteria" aria-label="달성 기준"><h3>달성 기준</h3><p className="tab-hint">이 목표를 이루었다고 판단할 기준입니다. 접근안으로 적은 뒤 달성 기준으로 채택했습니다.</p>{criteria.map(item => <button type="button" className="relation-link" key={item.id} onClick={() => onSelect({ kind: 'proposal', id: item.id })}>{proposalTitle(item.direction)} →</button>)}</section>}
+    {!linkOnlyView && <>
     <div className="stage-tabs" role="tablist" aria-label="목표 진행 단계">{steps.map(([label, value], index) => { const step = (index + 1) as 1 | 2 | 3; return <button type="button" role="tab" key={label} aria-selected={activeTab === step} className={`${activeTab === step ? 'selected' : ''} ${!finished && step === stage && !(splitOnly && stage === 1) ? 'current' : step === 1 && openCount && !finished ? 'pending' : finished || step < stage ? 'done' : ''}`} onClick={() => setTab(step)}><b>{step}. {label}</b><small>{value}{!finished && step === stage && !(splitOnly && stage === 1) ? ' · 지금 단계' : ''}</small></button>; })}</div>
     {activeTab === 1 && <section className="aim-section" role="tabpanel"><div className="aim-section-heading"><p className="tab-hint">목표에 다가갈 후보 접근법입니다. 하나를 골라 과제로 확정합니다.</p>{isOpen && aimAction?.kind !== 'create_proposal' && !addingProposal && <button type="button" className="secondary-action" onClick={() => setAddingProposal(true)}>＋ 접근안 추가</button>}</div>
       {addingProposal && aimAction?.kind !== 'create_proposal' && <div className="inline-composer">{proposalForm}</div>}
@@ -958,6 +977,7 @@ export function AimInspector({ aim, focus, data, busy, onSelect, submit, onArchi
     {activeTab === 3 && <section className="aim-section" role="tabpanel"><p className="tab-hint">검증된 과제들이 목표 자체를 이루었는지 따로 판단한 기록입니다.</p>
       {evaluations.length ? <ul className="record-list">{evaluations.map(item => <li className="record-item" key={item.id}><div className="record-head"><strong>목표를 이루었다고 평가</strong><em className={`state-badge verdict-${item.validity}`}>{verdictValidity(item.validity)}</em></div><p>{item.conclusion}</p><small>평가자 {item.evaluator_actor_id} · 근거로 삼은 검증 판단 {item.verdict_ids?.length ?? 0}개{item.child_evaluation_ids?.length ? ` · 하위 목표 평가 ${item.child_evaluation_ids.length}개` : ''}</small></li>)}</ul> : <p className="empty-note">{goals.some(goal => goal.phase === 'verified') ? '검증된 과제가 있습니다. 지금 할 일에서 목표 달성 평가를 기록할 수 있습니다.' : '아직 평가가 없습니다. 검증된 과제가 생기면 평가할 수 있습니다.'}</p>}
     </section>}
+    </>}
     <details className="goal-section sub-aims" open={subAims.length > 0}><summary>하위 목표 <small>{subAims.length ? `${subAims.length}개` : '없음'}</small></summary>
       {subAims.length ? <ul className="aim-proposal-tree">{subAims.map(item => <li key={item.id} className={item.phase === 'abandoned' ? 'settled' : ''}><button className="proposal-row" onClick={() => onSelect({ kind: 'aim', id: item.id })}><span>{item.description}</span><em className={`state-badge ${item.phase}`}>{stateName(item.phase)}{item.paused ? ' · 잠시 멈춤' : ''}</em></button></li>)}</ul> : <p className="tab-hint">아직 완료 기준을 쓸 수 없을 만큼 큰 목표라면 하위 목표로 나눕니다. 기준을 쓸 수 있는 작업이라면 과제로 확정하고, 과제를 상위·하위 과제로 나눕니다.</p>}
       {subAims.length > 0 && <p className="tab-hint">하위 목표를 모두 이뤄도 이 목표는 자동으로 달성되지 않습니다. 하위 목표의 달성 평가를 근거로 이 목표의 달성 평가를 따로 기록합니다.</p>}
@@ -970,7 +990,7 @@ export function AimInspector({ aim, focus, data, busy, onSelect, submit, onArchi
       <details className="sub-choice danger"><summary>이 목표 그만두기</summary><form onSubmit={submit('aim-abandon', form => [aim.id, '--actor', input(form, 'actor'), '--reason', input(form, 'reason')])}><p className="tab-hint">되돌릴 수 없습니다. 기록은 남지만 이 목표에서는 새 접근안, 과제 확정, 실행을 할 수 없습니다. 아래 접근안과 과제는 자동으로 닫히지 않습니다.</p><Field name="actor" label="결정자" remember="decider" /><Field name="reason" label="그만두는 이유" multiline /><button className="danger-action" disabled={busy}>목표 그만두기</button></form></details>
     </details>}
     <MemorySection data={data} ids={[aim.id, ...data.aim_evaluations.filter(item => item.aim_id === aim.id).map(item => item.id)]} />
-    <ReferenceSection subjectId={aim.id} references={aim.references ?? []} projectRoot={data.project_root ?? null} busy={busy} submit={submit} documents={data.memory_documents} />
+    <ReferenceSection subjectId={aim.id} references={aim.references ?? []} projectRoot={data.project_root ?? null} busy={busy} submit={submit} documents={data.memory_documents} onOpenProject={onOpenProject} />
     {hiddenChildren.length > 0 && <details className="hidden-children"><summary>이 목표에서 숨긴 항목 {hiddenChildren.length}개</summary><ul>{hiddenChildren.map(item => <li key={item.id}><span>{item.label}</span>{onRestore && <button type="button" className="quiet" onClick={() => onRestore(item.id)}>다시 보기</button>}</li>)}</ul></details>}
     <div className="inspector-footer"><TechnicalInfo rows={[['내부 ID', aim.id], ...(aimAction ? [['다음 행동 명령', aimAction.command_argv.join(' ')] as [string, string]] : [])]} /><details className="local-management"><summary>화면 관리</summary><p>목록에서 보고 싶지 않을 때 이 PC 화면에서만 숨깁니다. 기록을 삭제하거나 상태를 바꾸지 않습니다.</p><button className="quiet archive-button" onClick={() => onArchive(aim.id)}>이 목표 숨기기</button></details></div>
   </section>;
@@ -1287,13 +1307,13 @@ export function MemoryDocumentPreview({ document }: { document: MemoryDocument }
     : <p className="inline-problem">파일을 읽을 수 없습니다.</p>}</details>;
 }
 
-export function ReferenceSection({ subjectId, references, projectRoot, busy, submit, documents = {} }: { documents?: Record<string, MemoryDocument>; subjectId: string; references: ReferenceRecord[]; projectRoot: string | null; busy: boolean; submit: (command: string, args: (form: HTMLFormElement) => string[]) => (event: FormEvent<HTMLFormElement>) => Promise<void> }) {
+export function ReferenceSection({ subjectId, references, projectRoot, busy, submit, documents = {}, onOpenProject }: { onOpenProject?: (folder: string) => void; documents?: Record<string, MemoryDocument>; subjectId: string; references: ReferenceRecord[]; projectRoot: string | null; busy: boolean; submit: (command: string, args: (form: HTMLFormElement) => string[]) => (event: FormEvent<HTMLFormElement>) => Promise<void> }) {
   const [problem, setProblem] = useState('');
   const location = useRef<HTMLInputElement>(null);
   const addArgs = (form: HTMLFormElement) => { const label = String((form.elements.namedItem('label') as HTMLInputElement | null)?.value ?? '').trim(); return [subjectId, input(form, 'location'), ...(label ? ['--label', label] : []), '--actor', input(form, 'actor')]; };
   const pick = async () => { if (!isTauri()) return; const file = await invoke<string | null>('pick_file', { directory: projectRoot }); if (file && location.current) location.current.value = file; };
   return <details className="goal-section reference-section"><summary>참고 문서 <small>{references.length ? `${references.length}개` : '없음'}</small></summary>
-    {references.length ? <ul className="reference-list">{references.map(item => <li key={item.id}>{item.location.startsWith('ao:') ? <span className="ao-reference">{item.label ?? item.location} <small>AO 앱(또는 AO CLI)에서 이 AO Goal을 엽니다</small></span> : <button type="button" className="link-button" onClick={() => void openLocation(item.resolved).then(setProblem)}>{item.label ?? item.location}</button>}{!item.exists && <em className="state-badge missing">찾을 수 없음</em>}<small>{item.label ? `${item.location} · ` : ''}연결: {item.actor}</small>{documents[item.location] && <MemoryDocumentPreview document={documents[item.location]} />}<details className="sub-choice"><summary>연결 해제</summary><form onSubmit={submit('reference-remove', form => { const reason = String((form.elements.namedItem('reason') as HTMLInputElement | null)?.value ?? '').trim(); return [item.id, '--actor', input(form, 'actor'), ...(reason ? ['--reason', reason] : [])]; })}><Field name="actor" label="해제하는 사람" remember="reference" /><label className="field"><span>이유 (선택)</span><input name="reason" onKeyDown={event => event.stopPropagation()} /></label><button className="secondary" disabled={busy}>연결 해제</button></form></details></li>)}</ul> : <p className="tab-hint">설계 문서, memory 모듈, 이슈 URL처럼 이 항목을 이해하는 데 필요한 문서를 연결합니다.</p>}
+    {references.length ? <ul className="reference-list">{references.map(item => <li key={item.id}>{item.location.startsWith('goal-loop-aim:') ? <button type="button" className="link-button" disabled={!item.exists || !onOpenProject} onClick={() => onOpenProject?.(item.resolved)}>{item.label ?? item.location} <small>연결된 프로젝트로 이동합니다</small></button> : item.location.startsWith('ao:') ? <span className="ao-reference">{item.label ?? item.location} <small>AO 앱(또는 AO CLI)에서 이 AO Goal을 엽니다</small></span> : <button type="button" className="link-button" onClick={() => void openLocation(item.resolved).then(setProblem)}>{item.label ?? item.location}</button>}{!item.exists && <em className="state-badge missing">찾을 수 없음</em>}<small>{item.label ? `${item.location} · ` : ''}연결: {item.actor}</small>{documents[item.location] && <MemoryDocumentPreview document={documents[item.location]} />}<details className="sub-choice"><summary>연결 해제</summary><form onSubmit={submit('reference-remove', form => { const reason = String((form.elements.namedItem('reason') as HTMLInputElement | null)?.value ?? '').trim(); return [item.id, '--actor', input(form, 'actor'), ...(reason ? ['--reason', reason] : [])]; })}><Field name="actor" label="해제하는 사람" remember="reference" /><label className="field"><span>이유 (선택)</span><input name="reason" onKeyDown={event => event.stopPropagation()} /></label><button className="secondary" disabled={busy}>연결 해제</button></form></details></li>)}</ul> : <p className="tab-hint">설계 문서, memory 모듈, 이슈 URL처럼 이 항목을 이해하는 데 필요한 문서를 연결합니다.</p>}
     {problem && <p className="inline-problem">{problem}</p>}
     <details className="sub-choice reference-add"><summary>＋ 참고 문서 연결</summary><form className="reference-form" onSubmit={submit('reference-add', addArgs)}>
       <label className="field"><span>위치 — 파일 경로 또는 URL</span><span className="input-with-button"><input ref={location} name="location" required placeholder={projectRoot ? 'docs/설계.md 또는 https://…' : '전체 경로 또는 https://…'} />{isTauri() && <button type="button" className="secondary" onClick={() => void pick()}>파일 선택</button>}</span></label>

@@ -105,10 +105,17 @@ def normalize_reference(location: str, project_root: Path | None, cwd: Path) -> 
     return stored + (hash_mark + anchor if hash_mark else "")
 
 
+AIM_LINK_PREFIX = "goal-loop-aim:"
+
+
 def resolve_reference(location: str, project_root: Path | None) -> tuple[str, bool]:
     """Return what a UI should open and whether it currently exists (URLs are not probed)."""
     if location.lower().startswith(URL_PREFIXES):
         return location, True
+    if location.startswith(AIM_LINK_PREFIX):
+        # A link to another journal's Aim (aim_links.py) names that project's folder, not a file in this one.
+        folder = Path(location[len(AIM_LINK_PREFIX):].rpartition("#")[0])
+        return str(folder), folder.is_dir()
     path_text = location.partition("#")[0]
     path = Path(path_text)
     if not path.is_absolute():

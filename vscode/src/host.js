@@ -130,6 +130,14 @@ function createHost({ database, cli, ui }) {
       case 'pick_file': return ui.pickFile(typeof args.directory === 'string' ? args.directory : undefined);
       case 'pick_folder': pickedFolder = await ui.pickFolder(); return pickedFolder;
       case 'workspace_open_project': {
+        // A folder that already holds a journal (a linked project, goal-146) is only registered: nothing is
+        // created or written there, so it needs no dialog. Making a new journal still needs the folder the user chose.
+        const existing = typeof args.folder === 'string' && args.folder ? path.join(args.folder, '.goal-loop', 'journal.sqlite3') : '';
+        if (existing && fs.existsSync(existing)) {
+          const record = journalRecord(path.resolve(existing));
+          records.set(record.database, record);
+          return record;
+        }
         if (!pickedFolder || args.folder !== pickedFolder) throw new Error('폴더 선택 창에서 고른 폴더만 열 수 있습니다.');
         const initialized = JSON.parse(await cli.run(['project-init', pickedFolder], pickedFolder));
         const record = journalRecord(initialized.database);

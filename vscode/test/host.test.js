@@ -89,6 +89,26 @@ test('only a folder chosen in the dialog can be opened as a project, and it can 
   assert.deepEqual(cli.calls.at(-1).args, ['--database', other, 'ui-projection']);
 });
 
+test('a folder that already holds a journal is registered without the dialog and without project-init (goal-146)', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'linked-'));
+  fs.mkdirSync(path.join(folder, '.goal-loop'));
+  const linked = path.join(folder, '.goal-loop', 'journal.sqlite3');
+  fs.writeFileSync(linked, '');
+  const before = fs.readdirSync(path.join(folder, '.goal-loop'));
+  const cli = fakeCli(() => '{}');
+  const host = createHost({ database, cli, ui: noUi });
+  const record = await host.handle('workspace_open_project', { name: 'linked', folder });
+  assert.equal(record.database, path.resolve(linked));
+  assert.equal(record.project, path.resolve(folder));
+  assert.equal(cli.calls.length, 0);  // no project-init
+  assert.deepEqual(fs.readdirSync(path.join(folder, '.goal-loop')), before);
+  await host.handle('ui_projection', { database: record.database });
+  assert.deepEqual(cli.calls.at(-1).args, ['--database', record.database, 'ui-projection']);
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'plain-'));
+  await assert.rejects(host.handle('workspace_open_project', { name: 'plain', folder: empty }), /선택 창/);
+  assert.equal(fs.existsSync(path.join(empty, '.goal-loop')), false);
+});
+
 test('locations open in the editor or browser; other schemes and missing files do not', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'goal-loop-host-'));
   const file = path.join(directory, 'note.md'); fs.writeFileSync(file, 'x');

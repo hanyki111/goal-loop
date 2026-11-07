@@ -79,6 +79,15 @@ class AimLinkTests(unittest.TestCase):
         [record] = self.links("--aim", self.side["id"])
         self.assertEqual((record["state"], record["paused_by"]), ("paused", self.game_aim["id"]))
 
+    def test_a_link_reference_resolves_to_the_linked_project_folder(self):
+        reference = self.link("--project", str(self.game_root))
+        def resolved():
+            aim = next(item for item in run(self.umbrella, "ui-projection")["aims"] if item["id"] == self.side["id"])
+            return next((item["resolved"], item["exists"]) for item in aim["references"] if item["id"] == reference["id"])
+        self.assertEqual(resolved(), (str(self.game_root.resolve()), True))  # not joined onto this journal's folder
+        shutil.rmtree(self.game_root)
+        self.assertEqual(resolved(), (str(self.game_root.resolve()), False))
+
     def test_ui_projection_carries_the_same_links(self):
         self.assertEqual(run(self.umbrella, "ui-projection")["aim_links"], [])
         self.link("--project", str(self.game_root))
