@@ -100,6 +100,7 @@ class JudgingConfig:
     copy_exclude: tuple[str, ...] = ()
     attachments_only: bool = False
     rules: str = "code"
+    judge: str | None = None  # goal-loop-judge's default --judge (project-init --judge writes it)
 
     def summary(self, attachments_only: bool | None = None) -> dict:
         return {"judging_config": str(self.source) if self.source else None, "copy_exclude": list(self.copy_exclude),
@@ -117,9 +118,12 @@ def judging_config(database: Path) -> JudgingConfig:
         raise JudgingError(f"{source}를 읽지 못했습니다: {error}") from error
     if not isinstance(data, dict):
         raise JudgingError(f"{source}는 JSON 객체여야 합니다.")
-    unknown = sorted(set(data) - {"copy_exclude", "attachments_only", "rules"})
+    unknown = sorted(set(data) - {"copy_exclude", "attachments_only", "rules", "judge"})
     if unknown:
-        raise JudgingError(f"{source}에 알 수 없는 키가 있습니다: {', '.join(unknown)} (쓸 수 있는 키: copy_exclude, attachments_only, rules)")
+        raise JudgingError(f"{source}에 알 수 없는 키가 있습니다: {', '.join(unknown)} (쓸 수 있는 키: copy_exclude, attachments_only, rules, judge)")
+    judge = data.get("judge")
+    if judge is not None and judge not in JUDGE_NAMES:
+        raise JudgingError(f"{source}의 judge는 {', '.join(sorted(JUDGE_NAMES))} 중 하나여야 합니다: {judge!r}")
     exclude = data.get("copy_exclude", [])
     if not isinstance(exclude, list) or not all(isinstance(item, str) and item.strip("/ ") for item in exclude):
         raise JudgingError(f"{source}의 copy_exclude는 비어 있지 않은 문자열의 목록이어야 합니다.")
@@ -129,7 +133,7 @@ def judging_config(database: Path) -> JudgingConfig:
     rules = data.get("rules", "code")
     if rules not in JUDGING_RULES:
         raise JudgingError(f"{source}의 rules는 {' 또는 '.join(JUDGING_RULES)}여야 합니다: {rules!r}")
-    return JudgingConfig(source, tuple(item.strip("/") for item in exclude), attachments_only, rules)
+    return JudgingConfig(source, tuple(item.strip("/") for item in exclude), attachments_only, rules, judge)
 
 
 def copy_ignore(root: Path, patterns: tuple[str, ...] = ()):
@@ -655,8 +659,9 @@ def main(argv: list[str] | None = None) -> None:
     # One name whether it runs as the goal-loop-judge console script or as python -m goal_loop_tool.delegated_judging.
     parser = argparse.ArgumentParser(prog="goal-loop-judge", description="Run a separate agent on a project copy and record its judgment unchanged (Decision 6)")
     parser.add_argument("--database", type=Path, help="project journal (default: the nearest .goal-loop/journal.sqlite3)")
-    parser.add_argument("--judge", choices=sorted(JUDGE_NAMES), default="codex",
-                        help="judging agent: codex (codex exec), claude (a fresh Claude CLI session), glm (Claude CLI pointed at GLM via .goal-loop/judges.json)")
+    parser.add_argument("--judge", choices=sorted(JUDGE_NAMES), default=None,
+                        help="judging agent: codex (codex exec), claude (a fresh Claude CLI session), glm (Claude CLI pointed at GLM via .goal-loop/judges.json); "
+                             "default: judge in .goal-loop/judging.json, else codex")
     parser.add_argument("--agent", default=None, help="name recorded for the judging agent (default: codex, claude-judge, or glm by --judge)")
     parser.add_argument("--note", default="", help="extra guidance appended to the prompt")
     parser.add_argument("--no-record", action="store_true", help="run the judgment but do not record it")
@@ -676,8 +681,9 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("프로젝트 journal을 찾을 수 없습니다. --database를 지정하세요.")
     try:
         trees = parse_trees(args.tree)
-        agent = args.agent or JUDGE_NAMES[args.judge]
-        runner = runner_for(args.judge, database)
+        judge = args.judge or judging_config(database).judge or "codex"
+        agent = args.agent or JUDGE_NAMES[judge]
+        runner = runner_for(judge, database)
         if args.kind == "goal":
             result = judge_goal(database, args.id, agent=agent, attachments_only=args.attachments_only, note=args.note,
                                 evidence_ids=args.evidence, record=not args.no_record, trees=trees, runner=runner)

@@ -278,8 +278,11 @@ _COMMAND_HELP = {
         'aim-evaluate aim-1 "evaluator" "Aim의 의도까지 충족되었다." verdict-1 aim-evaluation-2',
     ),
     "project-init": (
-        "폴더 안에 .goal-loop 프로젝트 기록을 만듭니다. 그 폴더 아래에서 실행하는 명령은 이 기록을 자동으로 사용합니다.",
-        "project-init .",
+        "폴더 안에 .goal-loop 프로젝트 기록을 만듭니다. 그 폴더 아래에서 실행하는 명령은 이 기록을 자동으로 사용합니다. "
+        "--agents claude,codex를 주면 goal-loop 스킬과 CLAUDE.md·AGENTS.md의 Goal Loop 절(세션 시작, 기록 규칙, 위임 판정)을 함께 둡니다. "
+        "--judge codex|claude|glm은 goal-loop-judge의 기본 판정자를 .goal-loop/judging.json에, --glm-env-ps1은 GLM 연결 파일을 "
+        ".goal-loop/judges.json에 적습니다. 다시 실행해도 표지 밖 내용과 다른 설정 키는 그대로 남습니다.",
+        "project-init . --agents claude,codex --judge codex",
     ),
     "where": (
         "지금 사용하는 기록(DB), 프로젝트 루트, 첨부 폴더, 그리고 DB를 찾은 방법을 보여 줍니다. 기록을 만들지 않습니다.",
@@ -1464,6 +1467,12 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("workspaces", help="List desktop workspaces and their databases without opening any journal")
     project_init = sub.add_parser("project-init", help="Create a .goal-loop project journal in a folder (default: current folder)")
     project_init.add_argument("folder", nargs="?", type=Path, default=Path("."))
+    project_init.add_argument("--agents", default=None, metavar="claude,codex",
+                              help="also install the goal-loop skill and a Goal Loop section in CLAUDE.md (claude) and/or AGENTS.md (codex)")
+    project_init.add_argument("--judge", default=None, choices=("codex", "claude", "glm"),
+                              help="default judge for goal-loop-judge, written to .goal-loop/judging.json")
+    project_init.add_argument("--glm-env-ps1", type=Path, default=None, metavar="PATH",
+                              help="PowerShell file with the GLM connection ($env:ANTHROPIC_...), written to .goal-loop/judges.json")
     sub.add_parser("where", help="Show which journal is used, its project root, attachment folder, and how it was found")
     next_parser = sub.add_parser("next", help="Return structured, read-only next actions for an agent or script")
     next_parser.add_argument("--aim", dest="aim_scope", help="keep only actions arising from this Aim or its sub-Aims")
@@ -1659,12 +1668,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "workspaces":
         _emit({"registry": str(workspace_registry_path()), "workspaces": workspace_records()}); return
     if args.command == "project-init":
+        from .agent_setup import check_options, parse_agents, setup_project
         try:
+            agents = parse_agents(args.agents) if args.agents is not None else ()
+            glm_env_ps1 = check_options(args.judge, args.glm_env_ps1)
             database, created = init_project(args.folder)
+            repo = SqliteEventRepository(database)
+            setup = setup_project(project_root_for(database), agents, args.judge, glm_env_ps1)
         except ProjectLocationError as error:
             parser.error(str(error))
-        repo = SqliteEventRepository(database)
-        _emit({"project_root": str(project_root_for(database)), "database": str(database), "created": created, "schema_version": repo.schema_version()}); return
+        _emit({"project_root": str(project_root_for(database)), "database": str(database), "created": created, "schema_version": repo.schema_version(), **setup}); return
     try:
         args.database, database_source = resolve_database(args.database, args.workspace, args.project, Path.cwd())
     except ValueError as error:

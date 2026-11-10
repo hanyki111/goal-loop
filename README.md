@@ -31,9 +31,21 @@ goal-loop --help
 
 기록(journal)은 프로젝트 폴더 안 `.goal-loop/`에 쌓입니다. 이 폴더는 자체 `.gitignore`로 버전 관리에서 빠집니다.
 
+에이전트(Claude Code, Codex)와 대화하며 쓰는 경우에는 `--agents`와 `--judge`를 함께 줍니다.
+
 ```powershell
 cd <프로젝트 폴더>
-goal-loop project-init .
+goal-loop project-init . --agents claude,codex --judge codex
+```
+
+- `--agents claude,codex`: `.claude/skills/goal-loop/SKILL.md`, `.agents/skills/goal-loop/SKILL.md`를 두고, `CLAUDE.md`와 `AGENTS.md`에
+  표지(`<!-- goal-loop:begin … -->`)로 둘러싼 Goal Loop 절을 더합니다. 절에는 세션 시작 순서, 기록 규칙, 위임 판정 명령이 들어가고,
+  Memory Tool 지식 폴더가 있으면 Memory Tool 단계도 들어갑니다. 다시 실행하면 표지 안만 바뀌고, 내용이 다른 기존 스킬 파일은 덮어쓰지 않습니다(`kept`).
+- `--judge codex|claude|glm`: `goal-loop-judge`가 `--judge` 없이 쓸 판정자를 `.goal-loop/judging.json`의 `judge`에 적습니다(없으면 `codex`).
+  판정자가 실행한 에이전트와 같은 이름으로 기록되는 경우(Codex가 실행하고 Codex가 판정하는 경우)에는 `AGENTS.md`의 판정 명령이 `--judge claude`로 바뀝니다.
+- `--glm-env-ps1 <파일>`: GLM 연결 파일을 `.goal-loop/judges.json`의 `glm.env_from_ps1`에 적습니다. 결과의 `warnings`는 판정자 CLI가 PATH에 없거나 GLM 연결이 없을 때 나옵니다.
+
+```powershell
 goal-loop where                      # source: project 이면 이 프로젝트의 기록을 씁니다
 goal-loop aim-create "이루고 싶은 변화"
 goal-loop proposal-create aim-1 "무엇을 이루면 달성인가: (1) … (2) …" --actor claude   # 목표의 달성 기준

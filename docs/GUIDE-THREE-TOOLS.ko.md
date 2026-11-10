@@ -123,11 +123,23 @@ npm run orchestrate -- milestone-create $ID --id lane-1 --name "첫 레인" -w $
 ### 4.4 에이전트 지침 두기
 
 에이전트(Claude Code, Codex)가 세션마다 같은 순서로 일하도록 프로젝트 루트에 지침을 둡니다.
+기본 흐름은 사용자가 에이전트와 대화하며 일을 맡기고, 에이전트가 CLI로 기록하고, 실행하지 않은 별도 판정자(`goal-loop-judge`)가
+프로젝트 사본에서 판정하는 방식입니다. 이 지침과 판정자 설정은 `project-init` 옵션으로 한 번에 둡니다.
+4.2절의 `memory_tool init`을 먼저 실행해야 Memory Tool 단계가 절에 함께 들어갑니다. 나중에 실행했다면 아래 명령을 다시 실행하십시오.
 
-- Goal Loop 스킬: Goal Loop 저장소의 `.claude/skills/goal-loop/SKILL.md`(Claude Code)와
-  `.agents/skills/goal-loop/SKILL.md`(Codex)를 프로젝트의 같은 위치에 복사합니다.
+```powershell
+goal-loop project-init . --agents claude,codex --judge codex
+# GLM을 판정자로 쓸 때
+goal-loop project-init . --judge glm --glm-env-ps1 <path>\set-glm.ps1
+```
+
+- `--agents`: Goal Loop 스킬(`.claude/skills/goal-loop/SKILL.md`, `.agents/skills/goal-loop/SKILL.md`)을 두고, `CLAUDE.md`와 `AGENTS.md`에
+  표지로 둘러싼 Goal Loop 절을 더합니다. 다시 실행하면 표지 안만 바뀌고, 표지 밖 내용은 그대로 남습니다.
+- `--judge`: `goal-loop-judge`의 기본 판정자를 `.goal-loop/judging.json`의 `judge`에 적습니다. Codex가 실행한 일은 Codex가 판정할 수 없으므로,
+  판정자가 `codex`이면 `AGENTS.md`의 판정 명령은 `--judge claude`가 됩니다.
+- `--glm-env-ps1`: GLM 연결 파일 경로를 `.goal-loop/judges.json`에 적습니다. 연결 값은 판정 프로세스에만 전달되고 기록에서는 지워집니다.
 - Memory Tool 스킬과 지침은 `python -m memory_tool init`이 만듭니다. `.memory/templates/CLAUDE.md.template`의 절을 참고하십시오.
-- 아래는 `CLAUDE.md`(Codex는 `AGENTS.md`)에 넣을 최소 예시입니다.
+- 생성되는 절은 아래 예시와 같은 내용입니다. 손으로 쓸 때는 이 예시를 `CLAUDE.md`(Codex는 `AGENTS.md`)에 넣습니다.
 
 ```markdown
 ## 세션 시작
