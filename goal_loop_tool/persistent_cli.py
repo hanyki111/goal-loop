@@ -284,6 +284,18 @@ _COMMAND_HELP = {
         ".goal-loop/judges.json에 적습니다. 다시 실행해도 표지 밖 내용과 다른 설정 키는 그대로 남습니다.",
         "project-init . --agents claude,codex --judge codex",
     ),
+    "ui": (
+        "데스크톱 앱과 같은 화면을 읽기 전용으로 브라우저에 띄웁니다. 127.0.0.1에만 바인딩하고, 화면 파일은 설치한 패키지에 들어 있어 Node나 VS Code 확장이 "
+        "필요하지 않습니다. 기록 변경은 모두 거부하므로 결정은 데스크톱 앱이나 CLI에서 합니다. 원격 접속이면 --no-open으로 띄우고 출력된 포트를 "
+        "포워딩해 클라이언트 브라우저로 엽니다. 다른 프로세스가 기록하면 2초 안에 화면이 다시 읽습니다.",
+        "ui --no-open --port 8765",
+    ),
+    "overview": (
+        "목표 트리, 과제 상태(실행 중인 실행과 실행자, 검증 대상, 최신 판정, 보류), 지금 할 일을 사람이 읽는 한국어 텍스트로 보여 줍니다. "
+        "달성되었거나 그만둔 목표와 검증되었거나 중단된 과제는 개수로 접고, --all은 모두 펼칩니다. --aim은 그 목표와 하위 목표만, "
+        "--watch N은 N초마다 다시 그립니다(Ctrl+C로 끝냄). 기록을 바꾸지 않으므로 앱이나 VS Code 확장이 없는 환경에서 진행 상태를 볼 때 씁니다.",
+        "overview --aim aim-1 --watch 10",
+    ),
     "where": (
         "지금 사용하는 기록(DB), 프로젝트 루트, 첨부 폴더, 그리고 DB를 찾은 방법을 보여 줍니다. 기록을 만들지 않습니다.",
         "where",
@@ -1445,6 +1457,35 @@ def _import_ao_evidence(loop, database: Path, dispatched, actor: str) -> dict:
     return {"evidence_id": evidence.id}
 
 
+def _overview_text(database: Path, aim_scope: str | None, show_all: bool, enforce_authority: bool) -> str:
+    """Read the journal afresh and draw the overview; nothing is appended."""
+    from .overview import render_overview
+    loop = PersistentGoalLoop(SqliteEventRepository(database), enforce_authority=enforce_authority, mark_checkpoint=False)
+    projection = goal_graph_projection(loop, project_root=project_root_for(database), artifacts_dir=artifacts_dir_for(database))
+    return render_overview(projection, _next_action_records(loop, database, aim_scope), aim_scope, show_all)
+
+
+def _overview(args, parser) -> None:
+    def draw() -> str:
+        try:
+            return _overview_text(args.database, args.aim_scope, args.show_all, args.enforce_authority)
+        except (GoalLoopError, ValueError) as error:
+            parser.error(str(error))
+    if args.watch is None:
+        sys.stdout.write(draw()); return
+    if args.watch <= 0:
+        parser.error("--watch에는 0보다 큰 초를 적습니다.")
+    try:
+        while True:
+            text = draw()
+            # Clear the screen and move to the top, then redraw; the time line shows when it was read.
+            sys.stdout.write("\x1b[2J\x1b[H" + text + f"\n{time.strftime('%H:%M:%S')}에 읽음 · {args.watch:g}초마다 다시 그림 · Ctrl+C로 끝냄\n")
+            sys.stdout.flush()
+            time.sleep(args.watch)
+    except KeyboardInterrupt:
+        sys.stdout.write("\n")
+
+
 def _emit(record) -> None:
     print(json.dumps(record, ensure_ascii=False, sort_keys=True, default=lambda value: getattr(value, "value", getattr(value, "__dict__", str(value)))))
 
@@ -1460,6 +1501,8 @@ def main(argv: list[str] | None = None) -> None:
     location.add_argument("--workspace", help="desktop workspace name or id; resolves its database from the app's registry")
     location.add_argument("--project", type=Path, help="project folder whose .goal-loop journal to use")
     parser.add_argument("--enforce-authority", action="store_true", help="require an execution-grant for each attempt-start")
+    parser.add_argument("--keep-checkpoint", action="store_true",
+                        help="read without moving a stale projection checkpoint (used by goal-loop ui for its reads)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init")
     sub.add_parser("status")
@@ -1474,6 +1517,13 @@ def main(argv: list[str] | None = None) -> None:
     project_init.add_argument("--glm-env-ps1", type=Path, default=None, metavar="PATH",
                               help="PowerShell file with the GLM connection ($env:ANTHROPIC_...), written to .goal-loop/judges.json")
     sub.add_parser("where", help="Show which journal is used, its project root, attachment folder, and how it was found")
+    ui_parser = sub.add_parser("ui", help="Serve the app's screen read-only on 127.0.0.1 for a browser (no extension or Node needed)")
+    ui_parser.add_argument("--port", type=int, default=0, help="port to listen on (default: a free port)")
+    ui_parser.add_argument("--no-open", action="store_true", help="print the address without opening a browser")
+    overview_parser = sub.add_parser("overview", help="Print a read-only Korean text overview: Aim tree, Goal states, and next actions")
+    overview_parser.add_argument("--aim", dest="aim_scope", help="show only this Aim and its sub-Aims")
+    overview_parser.add_argument("--all", dest="show_all", action="store_true", help="also expand achieved/abandoned Aims and verified/stopped Goals")
+    overview_parser.add_argument("--watch", type=float, default=None, metavar="SECONDS", help="redraw every SECONDS until Ctrl+C")
     next_parser = sub.add_parser("next", help="Return structured, read-only next actions for an agent or script")
     next_parser.add_argument("--aim", dest="aim_scope", help="keep only actions arising from this Aim or its sub-Aims")
     sub.add_parser("reviews", help="Return read-only under-review Verdicts, Aim Evaluations, and Impact Reviews")
@@ -1687,6 +1737,15 @@ def main(argv: list[str] | None = None) -> None:
         # Read-only: reports the choice without creating the journal.
         _emit({"database": str(args.database), "source": database_source, "exists": args.database.is_file(),
                "project_root": str(root) if root else None, "artifacts": str(artifacts_dir_for(args.database))}); return
+    if args.command == "ui":
+        from .web_ui import WebUiError, serve
+        if not args.database.is_file():
+            parser.error(f"저널이 없습니다: {args.database}. 먼저 project-init을 실행하십시오.")
+        try:
+            serve(args.database, args.port, open_browser=not args.no_open)
+        except (WebUiError, OSError) as error:
+            parser.error(str(error))
+        return
     if args.command == "help":
         _show_help(args.command_name, args.database, all_commands=args.all)
         return
@@ -1731,7 +1790,9 @@ def main(argv: list[str] | None = None) -> None:
         _emit({"claimed": request.__dict__ if request else None}); return
     if args.command == "runtime-ack": _emit(repo.acknowledge_runtime_request(args.request_id, args.worker).__dict__); return
     if args.command == "runtime-requeue": _emit(repo.requeue_runtime_request(args.request_id, args.worker).__dict__); return
-    loop = PersistentGoalLoop(repo, enforce_authority=args.enforce_authority)
+    if args.command == "overview":
+        _overview(args, parser); return  # reads its own loop that leaves the checkpoint alone
+    loop = PersistentGoalLoop(repo, enforce_authority=args.enforce_authority, mark_checkpoint=not args.keep_checkpoint)
     if args.command == "status": _emit({"aims": list(loop.aims), "goals": list(loop.goals), "attempts": list(loop.attempts), "checkpoint": repo.projection_checkpoint()}); return
     if args.command == "next":
         try:

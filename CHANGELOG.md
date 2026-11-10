@@ -14,6 +14,9 @@
 - 프로젝트별 기록: `project-init`으로 프로젝트 폴더 안 `.goal-loop/`에 기록하고, `where`로 어떤 기록을 쓰는지 확인합니다.
   `--agents claude,codex`는 goal-loop 스킬과 `CLAUDE.md`·`AGENTS.md`의 Goal Loop 절을, `--judge`는 `goal-loop-judge`의 기본 판정자(`.goal-loop/judging.json`의 `judge`)를,
   `--glm-env-ps1`은 GLM 연결(`.goal-loop/judges.json`)을 함께 준비합니다.
+- 사람이 읽는 진행 상태(`overview`): 목표 트리, 과제 상태, 지금 할 일을 한국어 텍스트로 보여 주고, `--aim`, `--all`, `--watch N`을 받습니다.
+- 브라우저 화면(`ui`): 확장이나 Node 없이 앱과 같은 화면을 `127.0.0.1`에서 읽기 전용으로 띄웁니다(화면 번들은 패키지 데이터 `web_files/`, `ui`의 `npm run build:web`으로 생성).
+  전역 옵션 `--keep-checkpoint`는 오래된 projection checkpoint를 갱신하지 않고 읽습니다(`overview`와 `ui`가 씀).
 - 읽기 전용 투영: `next`, `status`, `activity`, `reviews`, `admission`, `ui-projection`(schema 16), `memory-draft`.
 - 과제 연결: 상위 과제(`goal-parent-add`), 선행 과제(`goal-dependency-add`), 실행을 막지 않고 흐름만 남기는 이어받음(`goal-follow-add`, 목표가 달라도 연결 가능).
 - 위임 판정(`goal-loop-judge`): 실행하지 않은 에이전트(Codex CLI, Claude CLI, Claude CLI로 연결한 다른 모델)가 프로젝트 사본에서 판정하고, 그 답을 그대로 기록합니다.

@@ -32,3 +32,6 @@ docs/AO-*.ko.md
 docs/DISTRIBUTION-AUDIT.ko.md
 docs/UI-MANUAL-QA-GUIDE.ko.md
 docs/archive/
+
+# goal-loop ui serves its own page; Vite's index.html from build:web is not used
+goal_loop_tool/web_files/index.html

@@ -57,6 +57,8 @@ goal-loop attempt-complete attempt-1 succeeded
 goal-loop evidence-record attempt-1 claude "실행하고 관찰한 것" --attach .\test.log
 goal-loop verification-begin goal-1 attempt-1
 goal-loop next                       # 다음에 할 일을 읽기 전용으로 보여 줍니다
+goal-loop overview                   # 목표 트리, 과제 상태, 지금 할 일을 한국어 텍스트로 (--aim, --all, --watch 10)
+goal-loop ui                         # 앱과 같은 화면을 브라우저에 읽기 전용으로 (확장·Node 불필요)
 goal-loop guide                      # 명령 안내
 ```
 
@@ -91,6 +93,17 @@ npm run tauri build    # ui/src-tauri/target/release/bundle/ 아래에 설치 �
 앱에서 "프로젝트 폴더 열기"로 `project-init`한 폴더를 고릅니다.
 개발용 앱(`npm run tauri dev`)과 설치한 앱은 같은 WebView2 데이터 폴더를 써서, 실행 옵션이 다르면 두 번째 앱이 뜨지 않을 수 있습니다.
 그럴 때는 한쪽을 끄거나 `WEBVIEW2_USER_DATA_FOLDER`로 데이터 폴더를 나눕니다.
+
+### 확장을 설치할 수 없을 때
+
+VS Code 확장이나 데스크톱 앱을 설치할 수 없는 환경에서는 CLI만으로 진행 상태를 봅니다.
+
+- `goal-loop overview [--aim aim-1] [--all] [--watch 10]`: 터미널에 목표 트리, 과제 상태, 지금 할 일을 출력합니다.
+- `goal-loop ui [--port 8765] [--no-open]`: 앱과 같은 화면을 `127.0.0.1`에서 브라우저로 엽니다. 화면 파일이 패키지에 들어 있어 Node가 필요하지 않습니다.
+  **읽기 전용**이어서 기록을 바꾸는 요청은 모두 거부하고, 결정은 데스크톱 앱이나 CLI에서 합니다. 다른 프로세스가 기록하면 2초 안에 화면이 다시 읽습니다.
+  원격 접속(VS Code Remote SSH 등)에서는 `--no-open --port 8765`로 띄우고 그 포트를 포워딩해 클라이언트 브라우저나 Simple Browser로 엽니다.
+- 두 명령 모두 projection checkpoint를 갱신하지 않습니다.
+- 화면 소스(`ui/`)를 바꿨다면 `cd ui; npm run build:web`으로 `goal_loop_tool/web_files/`를 다시 만들어 함께 커밋합니다.
 
 ### 선택 연결
 

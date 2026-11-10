@@ -21,11 +21,12 @@ class PersistentGoalLoop:
     # Concurrent sessions share one journal; a command whose base was overtaken is re-derived.
     _MAX_CONFLICT_RETRIES = 5
 
-    def __init__(self, repository: SqliteEventRepository, *, enforce_authority: bool = False) -> None:
+    def __init__(self, repository: SqliteEventRepository, *, enforce_authority: bool = False, mark_checkpoint: bool = True) -> None:
+        """``mark_checkpoint=False`` reads without moving a stale projection checkpoint (overview, goal-loop ui)."""
         self.repository = repository
         self.enforce_authority = enforce_authority
         self._loop = self._make_trial()
-        if not self.repository.projection_checkpoint_is_current():
+        if mark_checkpoint and not self.repository.projection_checkpoint_is_current():
             self.repository.mark_projection_checkpoint(self.repository.journal_last_sequence())
 
     def rebuild_from_journal(self) -> None:

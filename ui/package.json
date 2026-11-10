@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:ui": "vitest run",
     "build:vscode": "vite build --config vite.vscode.config.ts",
+    "build:web": "vite build --config vite.web.config.ts",
     "tauri": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/tauri.ps1"
   },
   "dependencies": {
