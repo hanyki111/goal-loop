@@ -412,6 +412,25 @@ class JudgeProcessTests(unittest.TestCase):
         self.assertIn(str(inside.pid), [line.split(" ", 1)[0] for line in ended])
         self.assertTrue(all(root.name in line for line in ended))
 
+    def test_report_of_a_long_command_line_keeps_the_copy_path(self):
+        # goal-155: a long interpreter path and arguments before the copy's path used to push it past a 200-character cut.
+        from goal_loop_tool import delegated_judging
+        root = Path(self.directory.name) / f"goal-loop-judge-{self.marker}"
+        long_python = "C:/" + "/".join(["very-long-folder-name"] * 12) + "/python.exe"
+        long_command = f'{long_python} -c "import time; time.sleep(300)" --flag {"x" * 80} {root / "trees" / "ao" / "server"}'
+        short_command = f"node {root}/server.js"
+        processes = [(101, long_command), (102, short_command), (103, f"{long_python} -c pass {self.marker}-elsewhere")]
+        ended_trees = []
+        with patch.object(delegated_judging, "_processes", return_value=processes), \
+             patch.object(delegated_judging, "_end_tree", ended_trees.append):
+            ended = delegated_judging._end_leftovers(root)
+        self.assertEqual(ended_trees, [101, 102])
+        self.assertEqual(len(ended), 2)
+        self.assertTrue(all(root.name in line for line in ended), ended)
+        self.assertTrue(ended[0].startswith("101 …"))
+        self.assertLessEqual(len(ended[0].split(" ", 1)[1]), 202)
+        self.assertEqual(ended[1], f"102 {short_command}")
+
 
 if __name__ == "__main__":
     unittest.main()

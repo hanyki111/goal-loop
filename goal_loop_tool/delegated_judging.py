@@ -426,6 +426,19 @@ def _processes() -> list[tuple[int, str]]:
     return [(int(pid), args) for pid, _, args in (line.strip().partition(" ") for line in done.stdout.splitlines()) if pid.isdigit()]
 
 
+REPORT_LIMIT = 200
+REPORT_LEAD = 40  # characters kept before the copy's path, so the report shows what was running there
+
+
+def _report_excerpt(command: str, start: int) -> str:
+    """At most REPORT_LIMIT characters of a command line that keep the part naming the copy (from ``start``)."""
+    if len(command) <= REPORT_LIMIT:
+        return command
+    begin = max(0, min(start - REPORT_LEAD, len(command) - REPORT_LIMIT))
+    excerpt = command[begin:begin + REPORT_LIMIT]
+    return ("…" if begin else "") + excerpt + ("…" if begin + REPORT_LIMIT < len(command) else "")
+
+
 def _end_leftovers(root: Path) -> list[str]:
     """End processes whose command line names the judge's copy (servers the judge left running); return what was ended."""
     def key(text: str) -> str:
@@ -433,9 +446,11 @@ def _end_leftovers(root: Path) -> list[str]:
     marker = key(str(root))
     ended = []
     for pid, command in _processes():
-        if pid != os.getpid() and marker in key(command) and "Get-CimInstance" not in command:
+        found = key(command).find(marker)
+        if pid != os.getpid() and found >= 0 and "Get-CimInstance" not in command:
             _end_tree(pid)
-            ended.append(f"{pid} {command[:200]}")
+            # The report keeps the copy's path even when a long interpreter path comes first (goal-155).
+            ended.append(f"{pid} {_report_excerpt(command, found)}")
     return ended
 
 
