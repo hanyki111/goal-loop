@@ -279,7 +279,8 @@ _COMMAND_HELP = {
     ),
     "project-init": (
         "폴더 안에 .goal-loop 프로젝트 기록을 만듭니다. 그 폴더 아래에서 실행하는 명령은 이 기록을 자동으로 사용합니다. "
-        "--agents claude,codex를 주면 goal-loop 스킬과 CLAUDE.md·AGENTS.md의 Goal Loop 절(세션 시작, 기록 규칙, 위임 판정)을 함께 둡니다. "
+        "--agents claude,codex를 주면 goal-loop·goal-loop-planning 스킬과 CLAUDE.md·AGENTS.md의 Goal Loop 절(세션 시작, 기록 이름, 위임 판정)을 함께 둡니다. "
+        "--skills-only를 함께 주면 스킬만 두고 CLAUDE.md·AGENTS.md는 건드리지 않습니다(지침을 직접 쓴 폴더). "
         "--judge codex|claude|glm은 goal-loop-judge의 기본 판정자를 .goal-loop/judging.json에, --glm-env-ps1은 GLM 연결 파일을 "
         ".goal-loop/judges.json에 적습니다. 다시 실행해도 표지 밖 내용과 다른 설정 키는 그대로 남습니다.",
         "project-init . --agents claude,codex --judge codex",
@@ -1511,7 +1512,9 @@ def main(argv: list[str] | None = None) -> None:
     project_init = sub.add_parser("project-init", help="Create a .goal-loop project journal in a folder (default: current folder)")
     project_init.add_argument("folder", nargs="?", type=Path, default=Path("."))
     project_init.add_argument("--agents", default=None, metavar="claude,codex",
-                              help="also install the goal-loop skill and a Goal Loop section in CLAUDE.md (claude) and/or AGENTS.md (codex)")
+                              help="also install the goal-loop skills and a Goal Loop section in CLAUDE.md (claude) and/or AGENTS.md (codex)")
+    project_init.add_argument("--skills-only", action="store_true",
+                              help="with --agents: install only the skills and leave CLAUDE.md and AGENTS.md untouched")
     project_init.add_argument("--judge", default=None, choices=("codex", "claude", "glm"),
                               help="default judge for goal-loop-judge, written to .goal-loop/judging.json")
     project_init.add_argument("--glm-env-ps1", type=Path, default=None, metavar="PATH",
@@ -1721,10 +1724,12 @@ def main(argv: list[str] | None = None) -> None:
         from .agent_setup import check_options, parse_agents, setup_project
         try:
             agents = parse_agents(args.agents) if args.agents is not None else ()
+            if args.skills_only and not agents:
+                raise ProjectLocationError("--skills-only는 --agents와 함께 씁니다(어느 에이전트의 스킬을 둘지 정합니다).")
             glm_env_ps1 = check_options(args.judge, args.glm_env_ps1)
             database, created = init_project(args.folder)
             repo = SqliteEventRepository(database)
-            setup = setup_project(project_root_for(database), agents, args.judge, glm_env_ps1)
+            setup = setup_project(project_root_for(database), agents, args.judge, glm_env_ps1, skills_only=args.skills_only)
         except ProjectLocationError as error:
             parser.error(str(error))
         _emit({"project_root": str(project_root_for(database)), "database": str(database), "created": created, "schema_version": repo.schema_version(), **setup}); return

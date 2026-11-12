@@ -27,6 +27,20 @@ goal-loop --help
 가상환경에 설치했다면 그 가상환경을 켜거나(`.\.venv\Scripts\Activate.ps1`) `.\.venv\Scripts\goal-loop.exe`로 부릅니다.
 아래 예시의 `goal-loop`와 `python`은 설치한 환경의 것을 뜻합니다.
 
+### 업데이트
+
+버전 번호는 커밋마다 올리지 않습니다(지금은 `0.1.0`). 그래서 `pipx upgrade goal-loop-tool`은 버전이 같다고 보고 새 커밋을
+받지 않을 수 있습니다. 새 커밋을 받으려면 처음 설치한 출처에서 다시 설치합니다.
+
+```powershell
+pipx reinstall goal-loop-tool
+# 가상환경에 설치했다면
+.\.venv\Scripts\python.exe -m pip install --force-reinstall git+https://github.com/hanyki111/goal-loop
+```
+
+업데이트한 뒤 `project-init . --agents …`를 다시 실행하면 지침 파일의 Goal Loop 절이 새 내용으로 바뀝니다. 이미 있는 스킬 파일은
+덮어쓰지 않으므로(`kept`), 새 스킬로 바꾸려면 그 스킬 파일을 지우고 다시 실행합니다.
+
 ### 프로젝트에서 시작하기
 
 기록(journal)은 프로젝트 폴더 안 `.goal-loop/`에 쌓입니다. 이 폴더는 자체 `.gitignore`로 버전 관리에서 빠집니다.
@@ -38,9 +52,13 @@ cd <프로젝트 폴더>
 goal-loop project-init . --agents claude,codex --judge codex
 ```
 
-- `--agents claude,codex`: `.claude/skills/goal-loop/SKILL.md`, `.agents/skills/goal-loop/SKILL.md`를 두고, `CLAUDE.md`와 `AGENTS.md`에
-  표지(`<!-- goal-loop:begin … -->`)로 둘러싼 Goal Loop 절을 더합니다. 절에는 세션 시작 순서, 기록 규칙, 위임 판정 명령이 들어가고,
-  Memory Tool 지식 폴더가 있으면 Memory Tool 단계도 들어갑니다. 다시 실행하면 표지 안만 바뀌고, 내용이 다른 기존 스킬 파일은 덮어쓰지 않습니다(`kept`).
+- `--agents claude,codex`: `.claude/skills/`와 `.agents/skills/` 아래에 두 스킬을 둡니다. `goal-loop`는 CLI로 기록하는 방법을,
+  `goal-loop-planning`은 문제 유형에 맞게 Aim과 Goal을 세우고 불합격 뒤 원인을 좁히는 방법을 다룹니다. 그리고 `CLAUDE.md`와 `AGENTS.md`에
+  표지(`<!-- goal-loop:begin … -->`)로 둘러싼 Goal Loop 절을 더합니다. 절에는 항상 적용되는 규칙만 들어갑니다(세션 시작 명령,
+  에이전트의 기록 이름, `user` 이름으로 기록하지 않기, 판정자에게 맡기는 판정 명령). 기준 쓰기, Evidence 첨부 같은 절차는 `goal-loop` 스킬에 있고,
+  Memory Tool 지식 폴더가 있으면 세션 시작에 Memory Tool 단계도 들어갑니다. 다시 실행하면 표지 안만 바뀌고, 내용이 다른 기존 스킬 파일은 덮어쓰지 않습니다(`kept`).
+- `--skills-only`(`--agents`와 함께): 두 스킬만 두고 `CLAUDE.md`·`AGENTS.md`는 읽지도 쓰지도 않습니다. 거시 저널을 둔 폴더처럼
+  지침 파일에 Goal Loop 절을 직접 쓴 곳에서 같은 지시가 두 번 들어가지 않게 합니다. 결과의 `judges_by_agent`에 에이전트별 판정자가 나옵니다.
 - `--judge codex|claude|glm`: `goal-loop-judge`가 `--judge` 없이 쓸 판정자를 `.goal-loop/judging.json`의 `judge`에 적습니다(없으면 `codex`).
   판정자가 실행한 에이전트와 같은 이름으로 기록되는 경우(Codex가 실행하고 Codex가 판정하는 경우)에는 `AGENTS.md`의 판정 명령이 `--judge claude`로 바뀝니다.
 - `--glm-env-ps1 <파일>`: GLM 연결 파일을 `.goal-loop/judges.json`의 `glm.env_from_ps1`에 적습니다. 결과의 `warnings`는 판정자 CLI가 PATH에 없거나 GLM 연결이 없을 때 나옵니다.
@@ -298,6 +316,11 @@ the human history matters.
 
 - Codex: `.agents/skills/goal-loop/SKILL.md`
 - Claude Code: `.claude/skills/goal-loop/SKILL.md`
+
+A companion Skill, `goal-loop-planning` (same folders), covers what to record rather than how: it
+classifies the problem (build, integration, root-cause, exploration), writes Aim criteria with a
+measurement and a stop condition, splits sub-Aims and Goals to fit that type, and after a
+`not_satisfied` Verdict narrows the cause to one and tests it with a diagnostic Goal before a retry.
 
 For example, an empty database reports `create_aim`. A failed Attempt reports either
 `decide_retry` or, after an unconsumed Decision exists, `start_retry_attempt` with that

@@ -15,6 +15,9 @@ connections) live in `CLAUDE.local.md`, which Claude Code also loads and which i
 ## Commands
 
 Use the project virtual environment; do not rely on global aliases.
+This includes Goal Loop itself: where the `goal-loop` skill writes `goal-loop` or `goal-loop-judge`, run
+`.\.venv\Scripts\goal-loop.exe` or `.\.venv\Scripts\goal-loop-judge.exe` in this repository, so commands use the
+working tree instead of an installed copy on PATH.
 
 ```powershell
 .\.venv\Scripts\python.exe -m memory_tool record "message"

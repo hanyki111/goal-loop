@@ -5,8 +5,9 @@ description: Inspect and record a user's Goal Loop state through the local goal-
 
 # Goal Loop
 
-In this repository, invoke `& .\.venv\Scripts\goal-loop.exe`. It targets the user's shared local SQLite database by default.
-Use bare `goal-loop` only when the calling shell resolves that command on PATH.
+Invoke `goal-loop` (and `goal-loop-judge`) from PATH. When the project's instructions name another way to run
+them, such as the project's virtual environment, use that instead; the commands below are written as `goal-loop`.
+Inside a project it uses that project's journal; elsewhere it targets the user's shared local SQLite database.
 Use `GOAL_LOOP_DATABASE` or `--database <path>` only when the user explicitly wants a separate database.
 A project keeps its journal in `<project>/.goal-loop/` (created by `project-init` or the desktop app's
 "프로젝트 폴더 열기"); any command run inside the project finds it automatically. Run `goal-loop where` to
@@ -60,56 +61,56 @@ linked journal invalidates it (this journal's records never change by themselves
 ## Useful commands
 
 ```powershell
-& .\.venv\Scripts\goal-loop.exe where
-& .\.venv\Scripts\goal-loop.exe project-init .
-& .\.venv\Scripts\goal-loop.exe workspaces
-& .\.venv\Scripts\goal-loop.exe --workspace "<name>" next
-& .\.venv\Scripts\goal-loop.exe reference-add goal-1 docs/design.md --label "design" --actor "<agent name>"
-& .\.venv\Scripts\goal-loop.exe reference-remove reference-1 --actor "owner" --reason "reason"
-& .\.venv\Scripts\goal-loop.exe evidence-record attempt-1 "<agent name>" "observation" --attach .\pytest.log
-& .\.venv\Scripts\goal-loop.exe ao-import attempt-1 "<agent name>" <ao-workspace>\projects\<project-id> <ao-goal-id>
-& .\.venv\Scripts\goal-loop.exe ao-attempt-start goal-1 1 "<agent name>" "run in AO" --ao-project-id <id> --ao-goal-id <slug> --ao-workspace <ao-workspace>
-& .\.venv\Scripts\goal-loop.exe ao-links --goal goal-1
-& .\.venv\Scripts\goal-loop.exe aim-link-add aim-1 --workspace "<name>" --external-aim aim-3 --actor "<agent name>"
-& .\.venv\Scripts\goal-loop.exe aim-links --aim aim-1
-& .\.venv\Scripts\goal-loop.exe status
-& .\.venv\Scripts\goal-loop.exe next
-& .\.venv\Scripts\goal-loop.exe admission
-& .\.venv\Scripts\goal-loop.exe guide
-& .\.venv\Scripts\goal-loop.exe help --all
-& .\.venv\Scripts\goal-loop.exe activity
-& .\.venv\Scripts\goal-loop.exe help
-& .\.venv\Scripts\goal-loop.exe guided
-& .\.venv\Scripts\goal-loop.exe aim-evaluate aim-1 "reviewer" "conclusion" verdict-1
-& .\.venv\Scripts\goal-loop.exe aim-create "sub-direction" --parent aim-1
-& .\.venv\Scripts\goal-loop.exe aim-parent-add aim-3 aim-1
-& .\.venv\Scripts\goal-loop.exe aim-evaluate aim-1 "reviewer" "conclusion" aim-evaluation-2
-& .\.venv\Scripts\goal-loop.exe evidence-correct evidence-1 "observer" "corrected observation"
-& .\.venv\Scripts\goal-loop.exe reviews
-& .\.venv\Scripts\goal-loop.exe verdict-review-resolve impact-review-1 reaffirm "reviewer" "reason"
-& .\.venv\Scripts\goal-loop.exe aim-evaluation-review-resolve aim-evaluation-1 impact-review-1 reaffirm "reviewer" "reason"
-& .\.venv\Scripts\goal-loop.exe aim-closure-invalidate aim-1 aim-evaluation-1 review-resolution-1 "reviewer" "reason"
-& .\.venv\Scripts\goal-loop.exe aim-pause aim-1 "owner" "reason"
-& .\.venv\Scripts\goal-loop.exe aim-resume aim-1 "owner" "reason"
-& .\.venv\Scripts\goal-loop.exe goal-hold-add goal-1 --actor "owner" --reason "reason"
-& .\.venv\Scripts\goal-loop.exe proposal-create aim-1 "direction" --actor "<agent name>"
-& .\.venv\Scripts\goal-loop.exe proposal-close proposal-2 --kind declined --actor "owner" --reason "reason"
-& .\.venv\Scripts\goal-loop.exe goal-stop goal-1 --actor "owner" --reason "reason"
-& .\.venv\Scripts\goal-loop.exe aim-abandon aim-1 --actor "owner" --reason "reason"
-& .\.venv\Scripts\goal-loop.exe goal-hold-clear goal-1
-& .\.venv\Scripts\goal-loop.exe verdict-dependency-add goal-2 verdict-1 --required-result satisfied
-& .\.venv\Scripts\goal-loop.exe retry-decide goal-1 attempt-1 "user" "reason"
-& .\.venv\Scripts\goal-loop.exe reverification-decide goal-1 "user" "reason"
-& .\.venv\Scripts\goal-loop.exe contract-revise goal-1 --scope "new scope" --criterion "new criterion" --verification "new verification" --actor "owner" --reason "requirements changed"
-& .\.venv\Scripts\goal-loop.exe attempt-start goal-1 1 "executor" "operation" --retry-decision decision-1
-& .\.venv\Scripts\goal-loop.exe runtime-attempt-start goal-1 1 "runtime" "operation" codex_exec.v1 '{"prompt":"inspect","workdir":"."}' --request-id request-1 --command-id runtime-start-1
-& .\.venv\Scripts\goal-loop.exe runtime-requests
-& .\.venv\Scripts\goal-loop.exe runtime-request request-1
-& .\.venv\Scripts\goal-loop.exe runtime-claim request-1 "worker-a"
-& .\.venv\Scripts\goal-loop.exe runtime-requeue request-1 "worker-a"
-& .\.venv\Scripts\goal-loop.exe runtime-ack request-1 "worker-a"
-& .\.venv\Scripts\goal-loop.exe runtime-dispatch request-1 "worker-a"
-& .\.venv\Scripts\goal-loop.exe runtime-deliver request-1 "worker-a" succeeded delivery-1
+goal-loop where
+goal-loop project-init .
+goal-loop workspaces
+goal-loop --workspace "<name>" next
+goal-loop reference-add goal-1 docs/design.md --label "design" --actor "<agent name>"
+goal-loop reference-remove reference-1 --actor "owner" --reason "reason"
+goal-loop evidence-record attempt-1 "<agent name>" "observation" --attach .\pytest.log
+goal-loop ao-import attempt-1 "<agent name>" <ao-workspace>\projects\<project-id> <ao-goal-id>
+goal-loop ao-attempt-start goal-1 1 "<agent name>" "run in AO" --ao-project-id <id> --ao-goal-id <slug> --ao-workspace <ao-workspace>
+goal-loop ao-links --goal goal-1
+goal-loop aim-link-add aim-1 --workspace "<name>" --external-aim aim-3 --actor "<agent name>"
+goal-loop aim-links --aim aim-1
+goal-loop status
+goal-loop next
+goal-loop admission
+goal-loop guide
+goal-loop help --all
+goal-loop activity
+goal-loop help
+goal-loop guided
+goal-loop aim-evaluate aim-1 "reviewer" "conclusion" verdict-1
+goal-loop aim-create "sub-direction" --parent aim-1
+goal-loop aim-parent-add aim-3 aim-1
+goal-loop aim-evaluate aim-1 "reviewer" "conclusion" aim-evaluation-2
+goal-loop evidence-correct evidence-1 "observer" "corrected observation"
+goal-loop reviews
+goal-loop verdict-review-resolve impact-review-1 reaffirm "reviewer" "reason"
+goal-loop aim-evaluation-review-resolve aim-evaluation-1 impact-review-1 reaffirm "reviewer" "reason"
+goal-loop aim-closure-invalidate aim-1 aim-evaluation-1 review-resolution-1 "reviewer" "reason"
+goal-loop aim-pause aim-1 "owner" "reason"
+goal-loop aim-resume aim-1 "owner" "reason"
+goal-loop goal-hold-add goal-1 --actor "owner" --reason "reason"
+goal-loop proposal-create aim-1 "direction" --actor "<agent name>"
+goal-loop proposal-close proposal-2 --kind declined --actor "owner" --reason "reason"
+goal-loop goal-stop goal-1 --actor "owner" --reason "reason"
+goal-loop aim-abandon aim-1 --actor "owner" --reason "reason"
+goal-loop goal-hold-clear goal-1
+goal-loop verdict-dependency-add goal-2 verdict-1 --required-result satisfied
+goal-loop retry-decide goal-1 attempt-1 "user" "reason"
+goal-loop reverification-decide goal-1 "user" "reason"
+goal-loop contract-revise goal-1 --scope "new scope" --criterion "new criterion" --verification "new verification" --actor "owner" --reason "requirements changed"
+goal-loop attempt-start goal-1 1 "executor" "operation" --retry-decision decision-1
+goal-loop runtime-attempt-start goal-1 1 "runtime" "operation" codex_exec.v1 '{"prompt":"inspect","workdir":"."}' --request-id request-1 --command-id runtime-start-1
+goal-loop runtime-requests
+goal-loop runtime-request request-1
+goal-loop runtime-claim request-1 "worker-a"
+goal-loop runtime-requeue request-1 "worker-a"
+goal-loop runtime-ack request-1 "worker-a"
+goal-loop runtime-dispatch request-1 "worker-a"
+goal-loop runtime-deliver request-1 "worker-a" succeeded delivery-1
 ```
 
 The interactive `guided` command is for a human terminal user. For agent work, prefer precise
@@ -121,7 +122,10 @@ Use this protocol when the project has a `.goal-loop/` journal and its instructi
 tracked with Goal Loop. The agent works through the CLI from inside the project; the human watches and
 decides in the desktop app (opened on the same project folder), which reloads when its window regains
 focus. Concurrent sessions may share one journal: a command overtaken by another writer is re-derived
-from the newer journal before it is appended.
+from the newer journal before it is appended. The project's instruction file (`CLAUDE.md`, `AGENTS.md`)
+keeps only the rules that always apply (your agent name, never recording as `user`, the judge command);
+this section holds the procedure. Before creating or splitting an Aim, writing Aim criteria or a Goal
+Contract, and after a `not_satisfied` Verdict, follow the `goal-loop-planning` skill as well.
 
 **Session start.** After the memory context, run `where` (expect `source: project`), then `next` and
 `status`, and summarize the open Aims, running Attempts, and pending verifications in a few sentences
@@ -177,6 +181,11 @@ before starting work.
   the Contract or Aim criteria, the Evidence, and the partial-satisfaction rules, and fix its answer with a
   schema. Record its report as Evidence under its name, then record its result unchanged under its name
   with `--reason`. Never judge your own execution, and never record under the user's name.
+  `goal-loop-judge` does all of this: after `verification-begin <goal-id> <attempt-id>`, run
+  `goal-loop-judge --judge <judge> goal <goal-id>`, and `goal-loop-judge --judge <judge> aim <aim-id>` for an Aim
+  (the project's instructions give the `--judge` value for your agent; a judge recorded under your own name is
+  refused). `--no-record` shows the judgment without recording it. If you disagree with a judgment, record your
+  view as Evidence and tell the user; never re-run it to get a different result.
   A project's `.goal-loop/judging.json` may set `copy_exclude`, `attachments_only`, and `rules` (`code` or
   `notes` for work that is not code); command-line choices override it.
 
@@ -185,6 +194,8 @@ tell the user it is still running and why.
 
 **Memory.** Goal Loop holds the working state and verification. The memory timeline records milestones
 and decisions and cites Goal Loop IDs (`goal-3 verified`) instead of repeating their content.
+When the project uses Memory Tool, a recorded Verdict or Aim evaluation returns a `memory_draft` (also
+`goal-loop memory-draft`): adjust that line and record it with `python -m memory_tool record "…"`.
 
 ## Closure paths and attribution
 
@@ -196,8 +207,8 @@ reason. Core rejects depending on an ancestor Goal.
 
 ## React / Tauri UI preview
 
-The local desktop preview lives in `ui/`. Start it with `cd ui; npm run tauri dev`; its launcher
-adds the project venv and Rust tool paths and uses Vite port 5174. It consumes only the read-only
+In the Goal Loop source repository, the desktop preview lives in `ui/`. Start it with
+`cd ui; npm run tauri dev`; its launcher adds that repository's venv and Rust tool paths and uses Vite port 5174. It consumes only the read-only
 `ui-projection` and `next` projections and sends mutations through an allow-listed CLI adapter.
 The UI is a human-facing surface, not evidence that an agent has authorization to create facts.
 Keep the same semantic guardrails above when describing or operating it.

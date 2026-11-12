@@ -7,7 +7,7 @@ from unittest.mock import patch
 import unittest
 
 from goal_loop_tool import agent_setup
-from goal_loop_tool.agent_setup import BEGIN, END, judge_for, skill_text
+from goal_loop_tool.agent_setup import BEGIN, END, SKILL_NAMES, judge_for, skill_text
 from goal_loop_tool.delegated_judging import JUDGE_NAMES, JudgingError, judging_config, main as judging_main
 from goal_loop_tool.persistent_cli import main
 
@@ -43,8 +43,72 @@ class AgentSetupTests(unittest.TestCase):
                 for path in sorted(self.project.rglob("*")) if path.is_file() and path.suffix in (".md", ".json")}
 
     def test_packaged_skill_matches_repository_skills(self):
-        for relative in (".claude/skills/goal-loop/SKILL.md", ".agents/skills/goal-loop/SKILL.md"):
-            self.assertEqual(skill_text(), (REPO / relative).read_text(encoding="utf-8"), relative)
+        for name in SKILL_NAMES:
+            for relative in (f".claude/skills/{name}/SKILL.md", f".agents/skills/{name}/SKILL.md"):
+                self.assertEqual(skill_text(name), (REPO / relative).read_text(encoding="utf-8"), relative)
+
+    def test_goal_loop_skill_calls_the_cli_from_path_and_holds_the_procedure(self):
+        text = skill_text()
+        self.assertNotIn(".venv", text)
+        self.assertNotIn("In this repository", text)
+        self.assertIn("Invoke `goal-loop` (and `goal-loop-judge`) from PATH", text)
+        # What the generated section no longer carries lives in the skill.
+        for usage in ("proposal-close --kind criteria", "--attach", "sub-Aim", "goal-follow-add", "memory_draft",
+                      "goal-loop-judge --judge <judge> goal <goal-id>", "--no-record", "`goal-loop-planning` skill"):
+            self.assertIn(usage, text)
+
+    def test_section_keeps_only_the_rules_that_always_apply(self):
+        (self.project / ".memory/timeline").mkdir(parents=True)
+        for agent, judge in (("claude", "codex"), ("codex", "claude")):
+            section = agent_setup.instruction_section(agent, "codex", self.project)
+            body = section.splitlines()[1:-1]
+            self.assertLessEqual(len(body), 15, section)
+            self.assertIn(f"이 에이전트의 이름은 `{agent}`", section)
+            self.assertIn("`user` 이름으로는 아무것도 기록하지 않는다", section)
+            self.assertIn(f"goal-loop-judge --judge {judge} goal <goal-id>", section)
+            self.assertIn(f"goal-loop-judge --judge {judge} aim <aim-id>", section)
+            self.assertIn("goal-loop where", section)
+            self.assertIn("memory_tool context", section)
+            self.assertIn("`goal-loop-planning` 스킬", section)
+            for moved in ("proposal-close", "--attach", "goal-follow-add", "memory_draft", "하위 Aim"):
+                self.assertNotIn(moved, section)
+
+    def test_skills_only_installs_both_skills_and_leaves_instructions_alone(self):
+        claude = self.project / "CLAUDE.md"
+        own = "# Umbrella\n\n## Goal Loop (hand-written)\n"
+        claude.write_text(own, encoding="utf-8")
+        result = run("project-init", str(self.project), "--agents", "claude,codex", "--skills-only")
+        statuses = {Path(item["path"]).relative_to(self.project).as_posix(): item["status"] for item in result["agent_files"]}
+        self.assertEqual(statuses, {f"{folder}/{name}/SKILL.md": "created"
+                                    for folder in (".claude/skills", ".agents/skills") for name in SKILL_NAMES})
+        self.assertEqual(claude.read_text(encoding="utf-8"), own)
+        self.assertFalse((self.project / "AGENTS.md").exists())
+        self.assertEqual(result["judges_by_agent"], {"claude": "codex", "codex": "claude"})
+        self.assertIn("--skills-only", result["instructions"])
+        files = self.files()
+        for name in SKILL_NAMES:
+            self.assertEqual(files[f".claude/skills/{name}/SKILL.md"], skill_text(name))
+        # Rerunning stays unchanged and still never touches the instruction files.
+        again = run("project-init", str(self.project), "--agents", "claude", "--skills-only")
+        self.assertEqual({item["status"] for item in again["agent_files"]}, {"unchanged"})
+        self.assertFalse((self.project / "AGENTS.md").exists())
+
+    def test_skills_only_without_agents_writes_nothing(self):
+        with redirect_stderr(StringIO()) as error, self.assertRaises(SystemExit):
+            run("project-init", str(self.project), "--skills-only")
+        self.assertIn("--agents", error.getvalue())
+        self.assertFalse((self.project / ".goal-loop").exists())
+
+    def test_planning_skill_has_front_matter_and_every_part(self):
+        text = skill_text("goal-loop-planning")
+        self.assertTrue(text.startswith("---\nname: goal-loop-planning\ndescription: "))
+        for heading in ("## 이 스킬의 목적과 한계", "## 1. 두 질문", "## 2. 유형: 지금 아는 정도", "## 3. Aim을 정할 때",
+                        "## 4. 나눌 때", "## 5. 원인을 좁힐 때", "## 6. 확인 결과가 '아니오'일 때",
+                        "## 7. 개선이 오르지 않을 때", "## 8. 판정과 기록", "## 근거의 수준"):
+            self.assertIn(heading, text)
+        # A not_satisfied Verdict on a succeeded Attempt is repaired, not retried (retry-decide needs a failed Attempt).
+        self.assertIn("`retry-decide`를 쓸 수 없습니다", text)
+        self.assertNotEqual(skill_text("goal-loop-planning"), skill_text())
 
     def test_judge_names_match_delegated_judging(self):
         self.assertEqual(agent_setup.JUDGE_NAMES, JUDGE_NAMES)
@@ -58,17 +122,20 @@ class AgentSetupTests(unittest.TestCase):
         (self.project / "CLAUDE.md").write_text("# My project\n\nOwn notes.\n", encoding="utf-8")
         result = run("project-init", str(self.project), "--agents", "claude,codex", "--judge", "codex")
         statuses = {Path(item["path"]).relative_to(self.project).as_posix(): item["status"] for item in result["agent_files"]}
-        self.assertEqual(statuses, {".claude/skills/goal-loop/SKILL.md": "created", "CLAUDE.md": "appended",
-                                    ".agents/skills/goal-loop/SKILL.md": "created", "AGENTS.md": "created"})
+        self.assertEqual(statuses, {".claude/skills/goal-loop/SKILL.md": "created", ".claude/skills/goal-loop-planning/SKILL.md": "created",
+                                    "CLAUDE.md": "appended", ".agents/skills/goal-loop/SKILL.md": "created",
+                                    ".agents/skills/goal-loop-planning/SKILL.md": "created", "AGENTS.md": "created"})
         files = self.files()
-        self.assertEqual(files[".claude/skills/goal-loop/SKILL.md"], skill_text())
-        self.assertEqual(files[".agents/skills/goal-loop/SKILL.md"], skill_text())
+        for name in SKILL_NAMES:
+            self.assertEqual(files[f".claude/skills/{name}/SKILL.md"], skill_text(name))
+            self.assertEqual(files[f".agents/skills/{name}/SKILL.md"], skill_text(name))
         claude = files["CLAUDE.md"]
         self.assertTrue(claude.startswith("# My project\n\nOwn notes.\n\n" + BEGIN))
         self.assertTrue(claude.endswith(END + "\n"))
         self.assertIn("이 에이전트의 이름은 `claude`", claude)
         self.assertIn("goal-loop-judge --judge codex goal <goal-id>", claude)
         self.assertIn("verification-begin", claude)
+        self.assertIn("`goal-loop-planning` 스킬", claude)
         self.assertNotIn("memory_tool", claude)  # no Memory Tool knowledge folder in this project
         # Codex judging its own work would be recorded under its own name, so AGENTS.md hands judging to Claude.
         self.assertIn("이 에이전트의 이름은 `codex`", files["AGENTS.md"])
@@ -98,7 +165,9 @@ class AgentSetupTests(unittest.TestCase):
         skill.parent.mkdir(parents=True)
         skill.write_text("my own skill\n", encoding="utf-8")
         result = run("project-init", str(self.project), "--agents", "claude")
-        self.assertEqual(result["agent_files"][0]["status"], "kept")
+        statuses = {Path(item["path"]).relative_to(self.project).as_posix(): item["status"] for item in result["agent_files"]}
+        self.assertEqual(statuses[".claude/skills/goal-loop/SKILL.md"], "kept")
+        self.assertEqual(statuses[".claude/skills/goal-loop-planning/SKILL.md"], "created")
         self.assertIn("kept", result["note"])
         self.assertEqual(skill.read_text(encoding="utf-8"), "my own skill\n")
 
@@ -107,8 +176,7 @@ class AgentSetupTests(unittest.TestCase):
         run("project-init", str(self.project), "--agents", "claude")
         text = (self.project / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn("python -m memory_tool context", text)
-        self.assertIn("memory-draft", text)
-        self.assertIn("python -m memory_tool record", text)
+        self.assertIn("memory_tool record", skill_text())  # the memory_draft step moved to the skill
 
     def test_venv_commands_are_used_when_the_project_has_the_cli(self):
         (self.project / ".venv/Scripts").mkdir(parents=True)
@@ -117,6 +185,7 @@ class AgentSetupTests(unittest.TestCase):
         text = (self.project / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertIn(r"`.\.venv\Scripts\goal-loop.exe where`", text)
         self.assertIn(r".\.venv\Scripts\goal-loop-judge.exe --judge codex", text)
+        self.assertIn(r"`goal-loop` 대신 `.\.venv\Scripts\goal-loop.exe`", text)
 
     def test_section_without_end_marker_is_refused(self):
         (self.project / "CLAUDE.md").write_text("x\n" + BEGIN + "\nbroken\n", encoding="utf-8")

@@ -133,8 +133,11 @@ goal-loop project-init . --agents claude,codex --judge codex
 goal-loop project-init . --judge glm --glm-env-ps1 <path>\set-glm.ps1
 ```
 
-- `--agents`: Goal Loop 스킬(`.claude/skills/goal-loop/SKILL.md`, `.agents/skills/goal-loop/SKILL.md`)을 두고, `CLAUDE.md`와 `AGENTS.md`에
-  표지로 둘러싼 Goal Loop 절을 더합니다. 다시 실행하면 표지 안만 바뀌고, 표지 밖 내용은 그대로 남습니다.
+- `--agents`: Goal Loop 스킬 두 개(`goal-loop`는 기록 방법, `goal-loop-planning`은 Aim과 Goal을 세우고 원인을 좁히는 방법)를
+  `.claude/skills/`와 `.agents/skills/` 아래에 두고, `CLAUDE.md`와 `AGENTS.md`에
+  표지로 둘러싼 Goal Loop 절을 더합니다. 절에는 항상 적용되는 규칙(기록 이름, `user` 이름 금지, 판정 명령)만 있고 절차는 스킬에 있습니다.
+  다시 실행하면 표지 안만 바뀌고, 표지 밖 내용은 그대로 남습니다.
+- `--skills-only`(`--agents`와 함께): 스킬만 두고 `CLAUDE.md`·`AGENTS.md`는 건드리지 않습니다. 지침에 Goal Loop 절을 직접 쓴 폴더(거시 저널 등)에 씁니다.
 - `--judge`: `goal-loop-judge`의 기본 판정자를 `.goal-loop/judging.json`의 `judge`에 적습니다. Codex가 실행한 일은 Codex가 판정할 수 없으므로,
   판정자가 `codex`이면 `AGENTS.md`의 판정 명령은 `--judge claude`가 됩니다.
 - `--glm-env-ps1`: GLM 연결 파일 경로를 `.goal-loop/judges.json`에 적습니다. 연결 값은 판정 프로세스에만 전달되고 기록에서는 지워집니다.
