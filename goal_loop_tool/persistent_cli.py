@@ -699,9 +699,16 @@ def _next_action_records(loop: PersistentGoalLoop, database: Path, aim_scope: st
             and loop.aim_evaluation_validity.get(evaluation.id) is VerdictValidity.VALID
         ]
         imported = [external.id for external in loop.external_evaluations.values() if external.aim_id == aim.id]
-        if aim.phase.value == "open" and (valid_satisfied or valid_child_evaluations or imported):
+        # goal-166: suggest evaluating only when nothing structural is left. An open sub-Aim is evaluated first (the parent
+        # cites its evaluation), and an open Goal already has its own next action. Open Proposals do not block: they may be
+        # parked on purpose, so they are listed for the user to keep or close when evaluating.
+        open_children = any(child.parent_aim_id == aim.id and child.phase.value == "open" for child in loop.aims.values())
+        open_goals = any(goal.identity.primary_aim_id == aim.id and goal.phase.value not in ("verified", "stopped") for goal in loop.goals.values())
+        if aim.phase.value == "open" and (valid_satisfied or valid_child_evaluations or imported) and not open_children and not open_goals:
             basis = "유효한 satisfied Verdict" if valid_satisfied else "달성된 하위 목표" if valid_child_evaluations else "연결된 목표에서 가져온 달성 평가"
-            add("evaluate_aim", "aim", aim.id, f"Aim {aim.id}에는 {basis}가 있습니다. Goal이나 하위 목표의 완료와 별도로 Aim의 의도까지 충족됐는지 평가하세요.", ["aim-evaluate", aim.id, "<evaluator>", "<conclusion>", *valid_satisfied, *valid_child_evaluations, *imported], aims=(aim.id,))
+            open_proposals = [proposal.id for proposal in loop.proposals.values() if proposal.aim_id == aim.id and proposal.status.value == "open"]
+            remaining = f" 남은 접근안 {len(open_proposals)}개({', '.join(open_proposals)})는 평가할 때 남길지 닫을지 정하세요." if open_proposals else ""
+            add("evaluate_aim", "aim", aim.id, f"Aim {aim.id}에는 {basis}가 있습니다. Goal이나 하위 목표의 완료와 별도로 Aim의 의도까지 충족됐는지 평가하세요.{remaining}", ["aim-evaluate", aim.id, "<evaluator>", "<conclusion>", *valid_satisfied, *valid_child_evaluations, *imported], aims=(aim.id,))
     return actions
 
 

@@ -139,6 +139,9 @@ class AimTreeCliTests(unittest.TestCase):
             self.call(path, "verification-begin", goal["id"], attempt["id"])
             verdict = self.call(path, "verdict-submit", goal["id"], attempt["id"], "owner", "satisfied", evidence["id"])
             child = self.call(path, "aim-evaluate", combat["id"], "owner", "전투 완료", verdict["id"])
+            # The stage sub-Aim is still open, so the parent is not suggested for evaluation yet (goal-166).
+            self.assertNotIn(("evaluate_aim", game["id"]), [(action["kind"], action["subject"]["id"]) for action in self.call(path, "next")["actions"]])
+            self.call(path, "aim-abandon", stage["id"], "--actor", "owner", "--reason", "범위 밖")
             suggestion = next(action for action in self.call(path, "next")["actions"] if action["kind"] == "evaluate_aim" and action["subject"]["id"] == game["id"])
             self.assertIn(child["id"], suggestion["command_argv"])
             parent = self.call(path, "aim-evaluate", game["id"], "owner", "게임 완성", child["id"])
