@@ -726,3 +726,48 @@ describe('folding the Aim navigator (goal-168)', () => {
     expect(screen.getByText('끝난 목표')).toBeTruthy();
   });
 });
+
+describe('repair attempt after a not_satisfied Verdict (goal-173)', () => {
+  afterEach(() => { cleanup(); localStorage.clear(); });
+  const goal = { id: 'goal-7', aim_id: 'aim-1', phase: 'active', target: '감지 보완', responsibility: 'produce', current_contract_version: 3, verifying_attempt_id: null, held: false, contract: {} };
+  const verdict = (id: string, result: string, extra: Record<string, unknown> = {}) => ({ id, goal_id: 'goal-7', attempt_id: `attempt-${id}`, result, validity: 'valid', evidence_ids: [], verifier_actor_id: 'codex', ...extra });
+  const data = (verdicts: unknown[]) => ({ aims: [{ id: 'aim-1', description: 'Open', phase: 'open', paused: false, currently_achieved: false }], proposals: [], goals: [goal], attempts: [], verdicts, nodes: [], edges: [], evidence: [], aim_evaluations: [], schema_version: 18 }) as never;
+  const repair = { kind: 'start_repair_attempt', summary: 'repair', subject: { id: 'goal-7', kind: 'goal' }, command_argv: ['goal-loop', '--database', 'C:/x/journal.sqlite3', 'attempt-start', 'goal-7', '3', '<executor>', '<operation>'] };
+  const show = (verdicts: unknown[]) => {
+    const calls: Array<[string, string[]]> = [];
+    const submit = (command: string, args: (form: HTMLFormElement) => string[]) => async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); calls.push([command, args(event.currentTarget)]); };
+    render(<GoalInspector goal={goal} data={data(verdicts)} activity={[]} admission={{}} busy={false} onSelect={vi.fn()} submit={submit as never} run={async () => undefined} onArchive={vi.fn()} actions={[repair]} />);
+    return calls;
+  };
+
+  it('names the action and starts an attempt on the current Contract without a decision flag', () => {
+    expect(actionTitle('start_repair_attempt')).toBe('보완 실행 시작');
+    const calls = show([verdict('verdict-1', 'not_satisfied', { reason: '(3) 미충족: 경고 문구' })]);
+    expect(screen.getByText('보완 실행 시작')).toBeTruthy();
+    expect(screen.getByText(/같은 완료 기준으로 보완하는 실행/)).toBeTruthy();
+    expect(screen.queryByText(/아직 화면에서 지원하지 않습니다/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('실행자'), { target: { value: 'claude' } });
+    fireEvent.change(screen.getByLabelText('이번 실행 작업'), { target: { value: '경고 문구 보완' } });
+    fireEvent.click(screen.getByRole('button', { name: '실행 시작' }));
+    expect(calls).toEqual([['attempt-start', ['goal-7', '3', 'claude', '경고 문구 보완']]]);
+  });
+
+  it('shows the latest valid not_satisfied Verdict with its verifier and reason', () => {
+    show([
+      verdict('verdict-1', 'not_satisfied', { reason: '오래된 이유' }),
+      verdict('verdict-2', 'not_satisfied', { reason: '(1) 충족\n(3) 미충족: 경고 문구', verifier_actor_id: 'glm' }),
+      verdict('verdict-3', 'not_satisfied', { reason: '무효가 된 판정', validity: 'invalidated' }),
+      verdict('verdict-4', 'satisfied', { reason: '다른 결과' }),
+    ]);
+    expect(screen.getByText('보완할 판정: verdict-2 · glm')).toBeTruthy();
+    expect(screen.getByText(/\(3\) 미충족: 경고 문구/)).toBeTruthy();
+    expect(screen.queryByText('오래된 이유')).toBeNull();
+    expect(screen.queryByText('무효가 된 판정')).toBeNull();
+  });
+
+  it('shows only the Verdict and verifier when no reason was recorded', () => {
+    show([verdict('verdict-5', 'not_satisfied')]);
+    const card = screen.getByText('보완할 판정: verdict-5 · codex').closest('.repair-verdict');
+    expect(card?.querySelector('p')).toBeNull();
+  });
+});
