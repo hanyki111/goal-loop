@@ -92,7 +92,8 @@ python -m memory_tool init
 python -m memory_tool record "프로젝트 시작"
 ```
 
-- `.memory/`(지식 폴더), `.memory-tool.yml`(기본 폴더 위치), `.claude/guidelines.md`, `.claude/skills/mt-*`가 생깁니다.
+- `.memory/`(지식 폴더), `.memory-tool.yml`(기본 폴더 위치), `.claude/skills/mt-*`와 `.agents/skills/mt-*`가 생깁니다.
+  기록하고 검색하는 방법은 `mt-record` 스킬에 있습니다(Memory Tool 1.10.0부터, 예전의 `.claude/guidelines.md`를 대신함).
 - 기본 폴더 이름은 `python -m memory_tool base`로 보고 바꿀 수 있습니다. Goal Loop는 같은 규칙(`MEMORY_TOOL_BASE`,
   `.memory-tool.yml`의 `base`, 기본 `.memory`)으로 그 폴더를 찾습니다.
 - 지식 폴더를 저장소에 넣을지 정하십시오. 개인 기록이라면 `.gitignore`에 `.memory/`를 더합니다.

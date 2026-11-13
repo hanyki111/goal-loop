@@ -35,6 +35,7 @@ agent-workbench(`github.com/hanyki111/agent-workbench`)는 Goal Loop와 Memory T
    - 검토할 때 설치 기록을 어디에 둘지도 정해야 합니다. 이 저장소처럼 `.claude/skills/`와 `.agents/skills/`의 사본을 git으로 추적하는 프로젝트에서는 스킬 폴더 안에 기록 파일을 두면 그 파일도 커밋 대상이 됩니다. `.goal-loop/`(버전 관리에서 제외됨)에 두면 다른 체크아웃에서는 기록이 없어 모든 사본을 `kept`로 보게 됩니다. 두 방식의 장단점을 비교해서 고르십시오.
 
 4. **이 저장소의 Memory Tool 설정 갱신.** Memory Tool 1.10.0에서 `guidelines.md`의 내용이 `mt-record` 스킬로 옮겨졌습니다. 그런데 이 저장소는 아직 갱신되지 않았습니다.
+   - **반영함(2026-11-13):** Memory Tool 1.10.2로 `minit --update-all`을 실행하고 아래 세 곳을 고쳤습니다. 1.10.2는 갱신 안내 문구와 `mt-master-module`을 `@AGENTS.md` 구성에 맞춘 버전입니다.
    - `.claude/guidelines.md`가 남아 있고, `mt-record`가 설치되어 있지 않습니다. `.\.venv\Scripts\python.exe -m memory_tool init --update-all`로 갱신합니다. 이 명령은 `guidelines.md`를 `.backup`으로 이름을 바꿔 남깁니다.
    - `AGENTS.md`의 15행("Read `.claude/guidelines.md` …")과 24행("Where `.claude/guidelines.md` writes `m`, `ms` …")을 `mt-record` 기준으로 고칩니다.
    - `docs/GUIDE-THREE-TOOLS.ko.md` 95행은 `minit`이 `.claude/guidelines.md`를 만든다고 안내합니다. 1.10.0부터는 만들지 않으므로 `mt-record` 스킬 기준으로 고칩니다.

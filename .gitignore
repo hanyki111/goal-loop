@@ -12,7 +12,7 @@ build/
 .goal-loop/
 .memory/
 .claude/memory-context.md
-.claude/guidelines.md
+.claude/guidelines.md*
 .claude/settings.local.json
 .claude/skills/mt-*/
 .agents/skills/mt-*/
