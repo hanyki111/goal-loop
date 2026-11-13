@@ -27,7 +27,7 @@ describe('Goal Loop workspace components', () => {
     const aim = render(<AimInspector aim={data.aims[0]} data={data} busy={false} onSelect={onSelect} submit={() => vi.fn()} />);
     expect(screen.getByText(/검토 중 1개/)).toBeTruthy();
     const criteria = screen.getByRole('region', { name: '달성 기준' });
-    fireEvent.click(criteria.querySelector('button')!);
+    fireEvent.click(criteria.querySelector('.relation-link')!);  // the first button is now '기준 바꾸기' (goal-175)
     expect(onSelect).toHaveBeenCalledWith({ kind: 'proposal', id: 'proposal-1' });
     fireEvent.click(screen.getByRole('tab', { name: /1\. 접근안/ }));
     expect(screen.getAllByRole('button', { name: /무엇을 이루면 달성인가/ }).some(row => row.textContent?.includes('달성 기준'))).toBe(true);
@@ -769,5 +769,73 @@ describe('repair attempt after a not_satisfied Verdict (goal-173)', () => {
     show([verdict('verdict-5', 'not_satisfied')]);
     const card = screen.getByText('보완할 판정: verdict-5 · codex').closest('.repair-verdict');
     expect(card?.querySelector('p')).toBeNull();
+  });
+});
+
+describe('revising Aim criteria in the app (goal-175)', () => {
+  afterEach(() => { cleanup(); localStorage.clear(); });
+  const criteria = (id: string, direction: string, extra: Record<string, unknown> = {}) => ({ id, aim_id: 'aim-1', direction, status: 'closed', closure_kind: 'criteria', closed_by_actor_id: 'claude', closure_reason: '달성 기준', accepted_goal_id: null, criteria_superseded_by_proposal_id: null, ...extra });
+  const data = (phase = 'open') => ({
+    aims: [{ id: 'aim-1', description: '기록이 빠르다', phase, paused: false, currently_achieved: phase === 'achieved' }],
+    proposals: [
+      criteria('proposal-1', '처음 기준\n(1) 제목도 감지', { criteria_superseded_by_proposal_id: 'proposal-3' }),
+      criteria('proposal-2', '보완 기준', { criteria_superseded_by_proposal_id: 'proposal-3' }),
+      criteria('proposal-3', '바뀐 기준\n(1) 명령만 감지', { closed_by_actor_id: '사용자', closure_reason: '제목 감지는 끝나지 않음' }),
+      criteria('proposal-4', '성능 기준'),
+    ],
+    goals: [], attempts: [], verdicts: [], nodes: [], edges: [], evidence: [], aim_evaluations: [], schema_version: 19,
+  }) as never;
+  const region = () => screen.getByRole('region', { name: '달성 기준' });
+
+  it('lists only the current criteria and folds the replaced ones with who replaced them and why', () => {
+    const onSelect = vi.fn();
+    render(<AimInspector aim={(data() as { aims: never[] }).aims[0]} data={data()} busy={false} onSelect={onSelect} submit={() => vi.fn()} />);
+    const links = Array.from(region().querySelectorAll(':scope > .relation-link')).map(item => item.textContent);
+    expect(links).toEqual(['바뀐 기준 →', '성능 기준 →']);
+    const history = region().querySelector('details.replaced-criteria') as HTMLDetailsElement;
+    expect(history.open).toBe(false);
+    expect(history.querySelector('summary')?.textContent).toBe('이전 기준 2개');
+    const rows = Array.from(history.querySelectorAll('li')).map(item => [item.querySelector('button')?.textContent, item.querySelector('small')?.textContent]);
+    expect(rows).toEqual([['처음 기준 →', 'proposal-3로 바뀜 · 사용자 · 제목 감지는 끝나지 않음'], ['보완 기준 →', 'proposal-3로 바뀜 · 사용자 · 제목 감지는 끝나지 않음']]);
+    fireEvent.click(history.querySelector('li button')!);
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'proposal', id: 'proposal-1' });
+  });
+
+  it('opens a revision form prefilled with the current criteria and submits aim-criteria-revise', () => {
+    const calls: Array<[string, string[]]> = [];
+    const submit = (command: string, args: (form: HTMLFormElement) => string[]) => async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); calls.push([command, args(event.currentTarget)]); };
+    render(<AimInspector aim={(data() as { aims: never[] }).aims[0]} data={data()} busy={false} onSelect={vi.fn()} submit={submit as never} />);
+    fireEvent.click(screen.getByRole('button', { name: '기준 바꾸기' }));
+    const text = screen.getByLabelText('새 달성 기준') as HTMLTextAreaElement;
+    expect(text.value).toBe('바뀐 기준\n(1) 명령만 감지\n\n성능 기준');
+    const boxes = Array.from(document.querySelectorAll('.criteria-supersedes input')) as HTMLInputElement[];
+    expect(boxes.map(box => [box.name, box.checked])).toEqual([['supersede-proposal-3', true], ['supersede-proposal-4', true]]);
+    fireEvent.change(text, { target: { value: '새 기준' } });
+    fireEvent.click(boxes[1]);  // keep 성능 기준 as it is
+    const form = document.querySelector('form.criteria-revision') as HTMLFormElement;  // other forms on the screen also ask for a 결정자
+    fireEvent.change(form.querySelector('[name="actor"]')!, { target: { value: '사용자' } });
+    fireEvent.change(form.querySelector('[name="reason"]')!, { target: { value: '범위를 좁힘' } });
+    expect(Array.from(form.querySelectorAll('label > span:first-child')).map(item => item.textContent)).toEqual(expect.arrayContaining(['결정자', '바꾸는 이유']));
+    fireEvent.click(screen.getAllByRole('button', { name: '기준 바꾸기' }).at(-1)!);
+    expect(calls).toEqual([['aim-criteria-revise', ['aim-1', '새 기준', '--supersedes', 'proposal-3', '--actor', '사용자', '--reason', '범위를 좁힘']]]);
+  });
+
+  it('offers no revision for an Aim that is not open', () => {
+    render(<AimInspector aim={(data('achieved') as { aims: never[] }).aims[0]} data={data('achieved')} busy={false} onSelect={vi.fn()} submit={() => vi.fn()} />);
+    expect(region()).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '기준 바꾸기' })).toBeNull();
+  });
+
+  it('labels replaced criteria and links to the criteria that replaced them', () => {
+    const onSelect = vi.fn();
+    const all = data() as { proposals: never[] };
+    render(<ProposalInspector proposal={all.proposals[0]} data={data()} busy={false} onSelect={onSelect} submit={() => vi.fn()} run={async () => undefined} onArchive={vi.fn()} actions={[]} />);
+    expect(screen.getByText(/접근안 · 이전 달성 기준/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /바뀐 기준: 바뀐 기준 \(proposal-3\)/ }));
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'proposal', id: 'proposal-3' });
+    cleanup();
+    render(<ProposalInspector proposal={all.proposals[2]} data={data()} busy={false} onSelect={vi.fn()} submit={() => vi.fn()} run={async () => undefined} onArchive={vi.fn()} actions={[]} />);
+    expect(screen.getByText(/접근안 · 목표의 달성 기준/)).toBeTruthy();
+    expect(screen.queryByText(/이 기준은 바뀌었습니다/)).toBeNull();
   });
 });

@@ -559,3 +559,16 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .graph-filter .filter-group legend{padding:0 4px;color:#64748b;font-size:calc(11px * var(--ui-scale));font-weight:700}
 .graph-filter .filter-group label.check span{flex:1}
 .graph-filter .filter-count{padding:0 6px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:calc(11px * var(--ui-scale))}
+/* goal-175: revising Aim criteria and the replaced ones */
+.aim-criteria-heading{display:flex;align-items:center;justify-content:space-between;gap:calc(8px * var(--ui-scale))}
+.aim-criteria-heading .quiet{padding:calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));font-size:calc(12px * var(--ui-scale));border:1px solid #c7d2fe;background:#fff}
+.criteria-revision{display:grid;gap:calc(8px * var(--ui-scale));margin-top:calc(10px * var(--ui-scale));padding-top:calc(10px * var(--ui-scale));border-top:1px solid #dbe3ee}
+.criteria-supersedes{display:grid;gap:calc(4px * var(--ui-scale));margin:0;padding:calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));border:1px solid #dbe3ee;border-radius:8px}
+.criteria-supersedes legend{padding:0 4px;color:#64748b;font-size:calc(12px * var(--ui-scale))}
+.criteria-supersedes label.check input{width:auto}
+.replaced-criteria{margin-top:calc(8px * var(--ui-scale))}
+.replaced-criteria>summary{cursor:pointer;color:#64748b;font-size:calc(12px * var(--ui-scale));font-weight:600}
+.replaced-criteria ul{list-style:none;margin:calc(6px * var(--ui-scale)) 0 0;padding:0;display:grid;gap:calc(6px * var(--ui-scale))}
+.replaced-criteria li{display:grid;gap:2px}
+.replaced-criteria li .relation-link{opacity:.75;text-decoration:line-through}
+.replaced-criteria li small{color:#64748b;font-size:calc(11px * var(--ui-scale))}
