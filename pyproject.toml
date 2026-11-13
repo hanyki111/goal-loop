@@ -24,7 +24,7 @@ goal-loop-judge = "goal_loop_tool.delegated_judging:main"
 packages = ["goal_loop_tool"]
 
 [tool.setuptools.package-data]
-goal_loop_tool = ["agent_files/*.md", "agent_files/*-references/*.md", "web_files/index.js", "web_files/index.css"]
+goal_loop_tool = ["agent_files/*.md", "agent_files/*.json", "agent_files/*-references/*.md", "web_files/index.js", "web_files/index.css"]
 
 [tool.ruff]
 line-length = 100

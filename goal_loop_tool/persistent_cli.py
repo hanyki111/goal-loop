@@ -280,6 +280,9 @@ _COMMAND_HELP = {
     "project-init": (
         "폴더 안에 .goal-loop 프로젝트 기록을 만듭니다. 그 폴더 아래에서 실행하는 명령은 이 기록을 자동으로 사용합니다. "
         "--agents claude,codex를 주면 goal-loop·goal-loop-planning 스킬과 CLAUDE.md·AGENTS.md의 Goal Loop 절(세션 시작, 기록 이름, 위임 판정)을 함께 둡니다. "
+        "CLAUDE.md가 @AGENTS.md를 가져오면 AGENTS.md에 두 에이전트를 함께 적은 절 하나만 둡니다. "
+        "표지 밖에 직접 쓴 Goal Loop 지침이 있는 파일에는 절을 덧붙이지 않고 경고합니다. "
+        "예전에 배포한 판 그대로인 스킬 파일은 새 판으로 바꾸고, 고친 파일은 남깁니다. "
         "--skills-only를 함께 주면 스킬만 두고 CLAUDE.md·AGENTS.md는 건드리지 않습니다(지침을 직접 쓴 폴더). "
         "--judge codex|claude|glm은 goal-loop-judge의 기본 판정자를 .goal-loop/judging.json에, --glm-env-ps1은 GLM 연결 파일을 "
         ".goal-loop/judges.json에 적습니다. 다시 실행해도 표지 밖 내용과 다른 설정 키는 그대로 남습니다.",
@@ -1498,8 +1501,8 @@ def _emit(record) -> None:
     print(json.dumps(record, ensure_ascii=False, sort_keys=True, default=lambda value: getattr(value, "value", getattr(value, "__dict__", str(value)))))
 
 
-def main(argv: list[str] | None = None) -> None:
-    _configure_console_encoding()
+def build_parser() -> argparse.ArgumentParser:
+    """The goal-loop argument parser; project-init reads its subcommand names to spot hand-written instructions."""
     parser = argparse.ArgumentParser(description="Goal Loop persistent SQLite CLI")
     location = parser.add_mutually_exclusive_group()
     location.add_argument(
@@ -1519,7 +1522,8 @@ def main(argv: list[str] | None = None) -> None:
     project_init = sub.add_parser("project-init", help="Create a .goal-loop project journal in a folder (default: current folder)")
     project_init.add_argument("folder", nargs="?", type=Path, default=Path("."))
     project_init.add_argument("--agents", default=None, metavar="claude,codex",
-                              help="also install the goal-loop skills and a Goal Loop section in CLAUDE.md (claude) and/or AGENTS.md (codex)")
+                              help="also install the goal-loop skills and a Goal Loop section in CLAUDE.md (claude) and/or AGENTS.md (codex); "
+                                   "one shared section in AGENTS.md when CLAUDE.md imports it with @AGENTS.md")
     project_init.add_argument("--skills-only", action="store_true",
                               help="with --agents: install only the skills and leave CLAUDE.md and AGENTS.md untouched")
     project_init.add_argument("--judge", default=None, choices=("codex", "claude", "glm"),
@@ -1724,6 +1728,12 @@ def main(argv: list[str] | None = None) -> None:
     claude_run.add_argument("--model", required=True, help="Explicit Claude model alias or ID; no default model is selected")
     claude_run.add_argument("--max-turns", type=_positive_int, required=True, help="Positive cap on Claude agentic turns")
     claude_run.add_argument("--max-budget-usd", type=_positive_float, required=True, help="Positive per-run Claude API cost cap in USD")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    _configure_console_encoding()
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "workspaces":
         _emit({"registry": str(workspace_registry_path()), "workspaces": workspace_records()}); return

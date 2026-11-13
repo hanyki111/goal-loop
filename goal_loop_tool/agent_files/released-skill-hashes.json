@@ -1,0 +1,30 @@
+{
+  "goal-loop-planning/SKILL.md": [
+    "3f09dd58ef740875a066abbbe5fce4c08a966d25f7a145286e0f5be516540501",
+    "62fca78e73cf70f68444eeefed9f7c6a19b163d4bac57e460131f01b8f41ba50",
+    "c22cd81fd618fdbea52d0350962a7c4a6f8771c14875ca00627460c2c18333a6"
+  ],
+  "goal-loop-planning/references/aim-and-asking.md": [
+    "56684289746be8569a78d1deaec6d11f036739f95fd7a839496666fa41abdeda",
+    "b267a782b5570182ba6f427496b9aaa57208ad31dfdb817f8b43e085a99f7e99"
+  ],
+  "goal-loop-planning/references/approach-and-splitting.md": [
+    "1b5aee07cf2a4a6a8b11a1efed06e98fd78d5a3cb7580dadad2ea538432c495a",
+    "442096cb1a298d365c40e0cf5daea74605ab8dcd33d6e0f8c6e667b18898eb40"
+  ],
+  "goal-loop-planning/references/narrowing-a-cause.md": [
+    "81f0803a4cfa0263ab4bbd183c95e283a2cdb66b0bf1b42bc2e543351fa298a1",
+    "f92a3d4a9fb191cbfc7c92e26986d93414dc9f23b5b473217238bc9bd2620dbf"
+  ],
+  "goal-loop-planning/references/when-stuck.md": [
+    "365c2a5fe941a599317eaeb1efd794bbf2630ff6e2d0c8ad7882ce92d16e61f6",
+    "ee56171a914068390e7f8d7ed8f1d8264c51e5e90aa4cc57b281c932f597fe48"
+  ],
+  "goal-loop/SKILL.md": [
+    "0f272a32643dc47a016eb0f6539bae8ba276525fc94fba78cdf2f8f799311404",
+    "5598b94f4983615df35bcf8f5e82c130ae181435228f526b358ca99c525ce140",
+    "6ceea1a3f262f15b22a8bfecf7bc02fd04a4b906e6e137f2d6a710da8ef2c8ef",
+    "7a538db8543cb34041e55033c928389eb19d5e1d7f4268a55a4de71f792e3215",
+    "a8b320827d30da0c11297b38d32fcbf180fd0233baeb47dca5d228f9ef9c248a"
+  ]
+}

@@ -14,6 +14,8 @@
 - 프로젝트별 기록: `project-init`으로 프로젝트 폴더 안 `.goal-loop/`에 기록하고, `where`로 어떤 기록을 쓰는지 확인합니다.
   `--agents claude,codex`는 goal-loop 스킬과 `CLAUDE.md`·`AGENTS.md`의 Goal Loop 절을, `--judge`는 `goal-loop-judge`의 기본 판정자(`.goal-loop/judging.json`의 `judge`)를,
   `--glm-env-ps1`은 GLM 연결(`.goal-loop/judges.json`)을 함께 준비합니다.
+  `CLAUDE.md`가 `@AGENTS.md`를 가져오면 `AGENTS.md`에 두 에이전트를 함께 적은 절 하나만 두고, 직접 쓴 Goal Loop 지침이 있는 파일에는 절을 덧붙이지 않고 경고하며,
+  예전에 배포한 판 그대로인 스킬 파일은 새 판으로 바꿉니다(배포 판 해시는 `agent_files/released-skill-hashes.json`, `scripts/update_released_skill_hashes.py`로 갱신).
 - 사람이 읽는 진행 상태(`overview`): 목표 트리, 과제 상태, 지금 할 일을 한국어 텍스트로 보여 주고, `--aim`, `--all`, `--watch N`을 받습니다.
 - 브라우저 화면(`ui`): 확장이나 Node 없이 앱과 같은 화면을 `127.0.0.1`에서 읽기 전용으로 띄웁니다(화면 번들은 패키지 데이터 `web_files/`, `ui`의 `npm run build:web`으로 생성).
   전역 옵션 `--keep-checkpoint`는 오래된 projection checkpoint를 갱신하지 않고 읽습니다(`overview`와 `ui`가 씀).

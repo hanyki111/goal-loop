@@ -42,8 +42,8 @@ pipx reinstall goal-loop-tool
 ```
 
 다시 설치해도 각 프로젝트에 놓인 스킬과 지침 절은 바뀌지 않습니다. 프로젝트마다 `project-init . --agents …`를 다시 실행해야
-지침 파일의 Goal Loop 절이 새 내용으로 바뀌고, 없던 스킬이 생깁니다. 이미 있는 스킬 파일은 덮어쓰지 않으므로(`kept`),
-새 스킬로 바꾸려면 그 스킬 파일을 지우고 다시 실행합니다.
+지침 파일의 Goal Loop 절이 새 내용으로 바뀌고, 없던 스킬이 생깁니다. 이미 있는 스킬 파일이 이 도구가 예전에 배포한 판 그대로이면
+새 판으로 바꿉니다(`replaced`). 고친 스킬 파일은 덮어쓰지 않으므로(`kept`), 새 스킬로 바꾸려면 그 파일을 지우고 다시 실행합니다.
 
 ## 프로젝트에서 시작하기
 
@@ -60,13 +60,18 @@ goal-loop where                      # source: project 이면 이 프로젝트�
   그리고 `CLAUDE.md`와 `AGENTS.md`에 표지(`<!-- goal-loop:begin … -->`)로 둘러싼 Goal Loop 절을 더합니다.
   절에는 항상 적용되는 규칙만 들어갑니다(세션 시작 명령, 에이전트의 기록 이름, `user` 이름으로 기록하지 않기, 판정자에게 맡기는 판정 명령).
   Memory Tool 지식 폴더가 있으면 세션 시작에 Memory Tool 단계도 들어갑니다. 다시 실행하면 표지 안만 바뀝니다.
+- `CLAUDE.md`에 `@AGENTS.md`만 있는 줄이 있으면(Claude Code가 `AGENTS.md`를 가져오는 구성) `AGENTS.md`에 절 하나만 둡니다.
+  이 절은 에이전트마다의 기록 이름, 판정 명령, 스킬 위치를 함께 적습니다. Claude가 두 파일을 함께 읽으므로 `CLAUDE.md`에는 절을 두지 않고,
+  예전 실행으로 생긴 절이 있으면 지웁니다(`removed`).
+- 표지 밖에 직접 쓴 Goal Loop 지침(`goal-loop next`, `goal-loop-judge --judge codex goal …`처럼 하위 명령이나 옵션을 붙인 명령)이 있는 파일에는 절을 덧붙이지 않고(`skipped`)
+  `warnings`에 그 위치를 알립니다. 직접 쓴 지침을 계속 쓰려면 `--skills-only`로 실행하고, 생성 절을 쓰려면 직접 쓴 절을 지운 뒤 다시 실행합니다.
 - `--skills-only`(`--agents`와 함께): 두 스킬만 두고 `CLAUDE.md`·`AGENTS.md`는 읽지도 쓰지도 않습니다. 지침 파일에 Goal Loop 절을
   직접 쓴 곳(여러 프로젝트를 계획하는 거시 저널 폴더 등)에서 같은 지시가 두 번 들어가지 않게 합니다.
   결과의 `judges_by_agent`에 에이전트별 판정자가 나옵니다.
 - `--judge codex|claude|glm`: `goal-loop-judge`가 `--judge` 없이 쓸 판정자를 `.goal-loop/judging.json`의 `judge`에 적습니다(없으면 `codex`).
   판정자가 실행한 에이전트와 같은 이름으로 기록되는 경우(Codex가 실행하고 Codex가 판정하는 경우)에는 `AGENTS.md`의 판정 명령이 `--judge claude`로 바뀝니다.
 - `--glm-env-ps1 <파일>`: GLM 연결 파일을 `.goal-loop/judges.json`의 `glm.env_from_ps1`에 적습니다.
-- 결과의 `warnings`는 판정자 CLI가 PATH에 없거나 GLM 연결이 없을 때 나옵니다.
+- 결과의 `warnings`는 직접 쓴 Goal Loop 지침이 있거나, 판정자 CLI가 PATH에 없거나, GLM 연결이 없을 때 나옵니다.
 
 ## 기본 흐름
 
