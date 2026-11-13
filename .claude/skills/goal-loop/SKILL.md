@@ -143,6 +143,22 @@ before starting work.
 | `verdict-submit`, `aim-evaluate` | | delegated judging only (below) | ✓ |
 | review resolutions, closures, pause/hold | | | ✓ |
 
+**How much to record and judge.** Match the weight of records and judging to the weight of the change. When
+you start a change, say which level you chose; the user may change it.
+
+| Change | Record | Judging |
+|---|---|---|
+| Easy to undo and confirmed by tests (a typo, a requested style tweak) | the commit only | none |
+| Small but worth keeping in the journal | an Attempt on an open Goal that groups such changes | once for the group, later; or the user judges directly |
+| Hard to undo, or may break something else | its own Goal | delegated judging before the commit |
+
+- Deferring is not skipping. Leave a Goal at `verification-begin`; `next` and the app keep showing it as waiting,
+  and it is judged later (several deferred Goals can be judged one after another).
+- A change that is easy to undo may be committed before its Verdict; a `not_satisfied` Verdict is then fixed by a
+  repair Attempt and a follow-up commit. Only work that depends on a Goal waits for its Verdict.
+- Write only criteria the judge can check itself. The judge works on a copy of the project, so it cannot see Git
+  state or a running app's window; attach the observed output as Evidence and write the criterion against that output.
+
 **Mapping development work.**
 
 - Aim: an outcome the user stated. Write what will count as achieved in a Proposal on that Aim and close
@@ -174,8 +190,9 @@ before starting work.
 - References: link the design notes, memory modules, or issue URLs an Aim, Proposal, or Goal depends
   on with `reference-add` (inside the project, paths are stored relative to its root). A referenced
   document can change later, so never let a reference stand in for the Contract's criterion.
-- Verification: after `verification-begin`, stop and ask the user to submit the Verdict in the desktop
-  app. Do not start work that depends on the Goal until the Verdict exists.
+- Verification: after `verification-begin`, ask the user to submit the Verdict in the desktop app, or run delegated
+  judging (below), or leave it waiting as the level above allows. Do not start work that depends on the Goal until
+  the Verdict exists; other work may continue.
 - Delegated judging: only when the user has delegated Verdicts or Aim evaluations to a separate agent (one that
   did not execute the work, preferably a different model), run that agent on a copy of the journal, give it
   the Contract or Aim criteria, the Evidence, and the partial-satisfaction rules, and fix its answer with a

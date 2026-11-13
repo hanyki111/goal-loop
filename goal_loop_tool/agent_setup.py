@@ -46,6 +46,21 @@ def skill_text(name: str = "goal-loop") -> str:
     return resources.files("goal_loop_tool").joinpath(f"agent_files/{name}-SKILL.md").read_text(encoding="utf-8")
 
 
+def skill_files(name: str = "goal-loop") -> dict[str, str]:
+    """A skill's files by their path inside its folder: SKILL.md and the reference files it points to.
+
+    References live in ``agent_files/<name>-references/`` and are installed as ``references/<file>`` so the agent reads
+    them only when SKILL.md sends it there (goal-163).
+    """
+    files = {"SKILL.md": skill_text(name)}
+    folder = resources.files("goal_loop_tool").joinpath(f"agent_files/{name}-references")
+    if folder.is_dir():
+        for item in sorted(folder.iterdir(), key=lambda entry: entry.name):
+            if item.name.endswith(".md"):
+                files[f"references/{item.name}"] = item.read_text(encoding="utf-8")
+    return files
+
+
 def _read_json(path: Path) -> dict:
     if not path.is_file():
         return {}
@@ -197,12 +212,14 @@ def setup_project(project_root: Path, agents: tuple[str, ...], judge: str | None
         result["judging"] = configure_judging(project_root, judge, glm_env_ps1)
     effective = configured_judge(project_root) or DEFAULT_JUDGE
     if agents:
-        texts = {name: skill_text(name) for name in SKILL_NAMES}
+        texts = {name: skill_files(name) for name in SKILL_NAMES}
         files = []
         for agent in agents:
             for name in SKILL_NAMES:
-                skill = project_root / skill_path(agent, name)
-                files.append({"agent": agent, "path": str(skill), "status": _place_skill(skill, texts[name])})
+                folder = project_root / SKILL_DIRS[agent] / name
+                for relative, text in texts[name].items():
+                    path = folder / relative
+                    files.append({"agent": agent, "path": str(path), "status": _place_skill(path, text)})
             if skills_only:
                 continue
             instructions = project_root / INSTRUCTION_FILES[agent]
