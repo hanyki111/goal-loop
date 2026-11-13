@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { actionTitle, friendlyError, AttachmentList, ReferenceSection, AimInspector, AimNavigator, AttemptTimeline, FollowNotes, GoalInspector, NextActionSummary, ProposalInspector, RuntimeScreen, scopedNextActions, verdictRelations } from './Workspace';
 
 describe('Goal Loop workspace components', () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
 
   it('maps lifecycle command keys to Korean user actions', () => {
     expect(actionTitle('accept_proposal')).toBe('이 접근안을 과제로 확정');
@@ -54,6 +54,8 @@ describe('Goal Loop workspace components', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Aim/ }));
     expect(onSelect).toHaveBeenCalledWith({ kind: 'aim', id: 'aim-1' });
     expect(screen.getByText('과제 1개')).toBeTruthy();
+    expect(screen.queryByText('Completed Aim')).toBeNull();  // finished groups start folded
+    fireEvent.click(screen.getByRole('button', { name: /달성된 목표/ }));
     expect(screen.getByText('Completed Aim')).toBeTruthy();
   });
 
@@ -650,6 +652,7 @@ describe('Goal Loop workspace components', () => {
     expect(openRows.map(row => row.querySelector('span')?.textContent)).toEqual(['게임을 만든다', '↳ 전투가 재미있다', '다른 목표']);
     expect(screen.getAllByText('하위 목표 1개 · 과제 0개')).toHaveLength(2);
     // A sub-Aim in another phase group names its parent instead of being indented.
+    fireEvent.click(screen.getByRole('button', { name: /달성된 목표/ }));
     expect(screen.getByText('과제 0개 · 상위: 전투가 재미있다')).toBeTruthy();
     cleanup();
     const data = { aims, proposals: [], goals: [], attempts: [], verdicts: [], nodes: [], edges: [], evidence: [], aim_evaluations: [], schema_version: 11 };
@@ -658,5 +661,68 @@ describe('Goal Loop workspace components', () => {
     expect(onSelect).toHaveBeenCalledWith({ kind: 'aim', id: 'aim-1' });
     expect(screen.getByText('하위 목표 · 진행 중')).toBeTruthy();
     expect(screen.getByRole('button', { name: /보스전/ })).toBeTruthy();
+  });
+});
+
+describe('folding the Aim navigator (goal-168)', () => {
+  afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks(); });
+  const aims = [
+    { id: 'aim-1', description: '진행 목표', phase: 'open', paused: false, currently_achieved: false },
+    { id: 'aim-2', description: '끝난 목표', phase: 'achieved', paused: false, currently_achieved: true },
+    { id: 'aim-3', description: '또 끝난 목표', phase: 'achieved', paused: false, currently_achieved: true },
+    { id: 'aim-4', description: '그만둔 목표 하나', phase: 'abandoned', paused: false, currently_achieved: false },
+  ];
+  const header = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('shows each group header as a toggle with its count, open groups unfolded and finished ones folded', () => {
+    render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} />);
+    expect(header(/진행 중 목표/).getAttribute('aria-expanded')).toBe('true');
+    expect(header(/달성된 목표/).getAttribute('aria-expanded')).toBe('false');
+    expect(header(/그만둔 목표/).getAttribute('aria-expanded')).toBe('false');
+    expect([header(/진행 중 목표/), header(/달성된 목표/), header(/그만둔 목표/)].map(button => button.querySelector('small')?.textContent)).toEqual(['1', '2', '1']);
+    expect(screen.getByText('진행 목표')).toBeTruthy();
+    expect(screen.queryByText('끝난 목표')).toBeNull();
+    fireEvent.click(header(/진행 중 목표/));
+    expect(screen.queryByText('진행 목표')).toBeNull();
+    expect(header(/진행 중 목표/).getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('remembers folded groups on this PC', () => {
+    const first = render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} />);
+    fireEvent.click(header(/달성된 목표/));
+    expect(JSON.parse(localStorage.getItem('goal-loop.navigator.groups') ?? '[]')).toEqual(['abandoned']);
+    first.unmount();
+    render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} />);
+    expect(header(/달성된 목표/).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('끝난 목표')).toBeTruthy();
+  });
+
+  it('opens the folded group that holds an Aim selected elsewhere', () => {
+    const view = render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} />);
+    expect(screen.queryByText('그만둔 목표 하나')).toBeNull();
+    view.rerender(<AimNavigator aims={aims} goals={[]} selected={{ kind: 'aim', id: 'aim-4' }} onSelect={vi.fn()} />);
+    expect(header(/^그만둔 목표\d/).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: /그만둔 목표 하나/ }).className).toContain('active');
+  });
+
+  it('folds the whole list into a narrow strip and back', () => {
+    const onCollapsedChange = vi.fn();
+    const view = render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} onCollapsedChange={onCollapsedChange} />);
+    fireEvent.click(screen.getByRole('button', { name: '목록 접기' }));
+    expect(onCollapsedChange).toHaveBeenLastCalledWith(true);
+    view.rerender(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} collapsed onCollapsedChange={onCollapsedChange} />);
+    expect(screen.queryByText('진행 목표')).toBeNull();
+    expect(screen.getByTitle('진행 중 목표 1개').textContent).toBe('진행 중1');
+    fireEvent.click(screen.getByRole('button', { name: '목록 펼치기' }));
+    expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('still renders when this PC has no usable storage', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    render(<AimNavigator aims={aims} goals={[]} selected={null} onSelect={vi.fn()} />);
+    expect(header(/달성된 목표/).getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(header(/달성된 목표/));
+    expect(screen.getByText('끝난 목표')).toBeTruthy();
   });
 });

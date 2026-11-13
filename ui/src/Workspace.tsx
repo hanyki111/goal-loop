@@ -167,7 +167,7 @@ export function Workspace() {
   const [error, setError] = useState('');
   const [view, setView] = useState<'workspace' | 'inbox' | 'reviews' | 'runtime' | 'help'>('workspace');
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>(() => isTauri() ? [] : [{ id: 'preview', name: '미리보기', database: null }]);
-  const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem('goal-loop.workspace.id') ?? '');
+  const [workspaceId, setWorkspaceId] = useState(() => { try { return localStorage.getItem('goal-loop.workspace.id') ?? ''; } catch { return ''; } });  // storage may be unavailable (goal-168)
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
@@ -176,8 +176,10 @@ export function Workspace() {
   useEffect(() => { try { localStorage.setItem(SHOW_PROPOSALS_KEY, String(showProposals)); } catch { /* optional preference */ } }, [showProposals]);
   const [graphLayout, setGraphLayout] = useState<GraphLayout>(() => { try { return localStorage.getItem('goal-loop.graph.layout') === 'list' ? 'list' : 'columns'; } catch { return 'columns'; } });
   useEffect(() => { try { localStorage.setItem('goal-loop.graph.layout', graphLayout); } catch { /* optional preference */ } }, [graphLayout]);
-  const [graphFilter, setGraphFilter] = useState<GraphFilter>(() => { try { return { ...NO_GRAPH_FILTER, ...JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}') }; } catch { return NO_GRAPH_FILTER; } });
+  const [graphFilter, setGraphFilter] = useState<GraphFilter>(() => { try { return readGraphFilter(JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}')); } catch { return NO_GRAPH_FILTER; } });
   useEffect(() => { try { localStorage.setItem('goal-loop.graph.filter', JSON.stringify(graphFilter)); } catch { /* optional preference */ } }, [graphFilter]);
+  const [navigatorCollapsed, setNavigatorCollapsed] = useState(() => { try { return localStorage.getItem(NAVIGATOR_COLLAPSED_KEY) === 'true'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(NAVIGATOR_COLLAPSED_KEY, String(navigatorCollapsed)); } catch { /* optional preference */ } }, [navigatorCollapsed]);
   // Done Aims folded by the collapse filter that the person opened again (this session only).
   const [expandedAims, setExpandedAims] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) => setExpandedAims(previous => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; });
@@ -486,10 +488,10 @@ export function Workspace() {
     {error && view !== 'workspace' && <ErrorNotice raw={error} onClose={() => setError('')} />}
     {notice && <div className="toast-notice" role="status">{notice}</div>}
     {workspaceDialog && workspace && <WorkspaceDialog mode={workspaceDialog} workspace={workspace} busy={busy} onCancel={() => setWorkspaceDialog(null)} onRename={renameWorkspace} onDelete={deleteWorkspace} />}
-    {view === 'workspace' && <div className="workspace-grid" style={{ '--left-pane': `${paneWidths.left}px`, '--right-pane': `${paneWidths.right}px` } as React.CSSProperties}>
-      <AimNavigator aims={visibleData.aims} goals={visibleData.goals} selected={contextAimId ? { kind: 'aim', id: contextAimId } : null} onSelect={selectRecord} onCreate={beginAim} hidden={[...data.aims.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `목표 · ${item.description}` })), ...data.proposals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `접근안 · ${proposalTitle(item.direction)}` })), ...data.goals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `과제 · ${item.target}` }))]} onRestore={restore} />
+    {view === 'workspace' && <div className={`workspace-grid${navigatorCollapsed ? ' navigator-collapsed' : ''}`} style={{ '--left-pane': `${paneWidths.left}px`, '--right-pane': `${paneWidths.right}px` } as React.CSSProperties}>
+      <AimNavigator collapsed={navigatorCollapsed} onCollapsedChange={setNavigatorCollapsed} aims={visibleData.aims} goals={visibleData.goals} selected={contextAimId ? { kind: 'aim', id: contextAimId } : null} onSelect={selectRecord} onCreate={beginAim} hidden={[...data.aims.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `목표 · ${item.description}` })), ...data.proposals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `접근안 · ${proposalTitle(item.direction)}` })), ...data.goals.filter(item => archivedIds.has(item.id)).map(item => ({ id: item.id, label: `과제 · ${item.target}` }))]} onRestore={restore} />
       <PaneSplitter side="left" value={paneWidths.left} onChange={left => setPaneWidths(current => ({ ...current, left }))} />
-      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 상세가 열리고 그 항목의 연결선이 진해집니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} /><div className="legend-items" aria-label="연결선 범례">{showProposals && graphLayout === 'columns' ? <span>{legendLine('proposal')}{legendLine('accepted')}목표 → 접근안 → 과제</span> : <span>{legendLine('aim')}목표 → 과제</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={displayEdges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} nodesConnectable={false} onInit={instance => { refit.current = true; setFlowInstance(instance); }} minZoom={0.05} fitView fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1, minZoom: READABLE_START }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls fitViewOptions={{ padding: 0.05, maxZoom: 1.1, minZoom: 0.05 }} /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
+      <section className="canvas-panel" aria-label="목표와 과제 구조"><div className="panel-heading"><div><h2>목표 구조</h2><p>목표 → 접근안 → 과제의 흐름을 봅니다. 항목을 누르면 상세가 열리고 그 항목의 연결선이 진해집니다.</p></div><div className="canvas-actions"><button className="quiet" onClick={resetLayout}>배치 초기화</button></div></div><div className="graph-legend"><label className="legend-toggle layout-choice">배치 <select aria-label="그래프 배치" value={graphLayout} onChange={event => setGraphLayout(event.target.value as GraphLayout)}><option value="columns">접근안별 열</option><option value="list">목록</option></select></label><label className="legend-toggle" title={graphLayout === 'list' ? '목록 배치에서는 접근안을 그리지 않습니다' : undefined}><input type="checkbox" checked={showProposals && graphLayout === 'columns'} disabled={graphLayout === 'list'} onChange={event => setShowProposals(event.target.checked)} />접근안 표시</label><GraphFilterMenu filter={graphFilter} onChange={setGraphFilter} hidden={graphVisibility(data ?? { aims: [], goals: [], proposals: [] } as unknown as Projection, archivedIds, graphFilter, showProposals, graphLayout).hidden} counts={filterCounts(data, archivedIds)} /><div className="legend-items" aria-label="연결선 범례">{showProposals && graphLayout === 'columns' ? <span>{legendLine('proposal')}{legendLine('accepted')}목표 → 접근안 → 과제</span> : <span>{legendLine('aim')}목표 → 과제</span>}<span>{legendLine('aim-parent')}하위 목표</span><span>{legendLine('parent')}상위 과제</span><span>{legendLine('dependency')}검증 의존성</span><span>{legendLine('follows')}이어받음</span></div></div>{visibleData.aims.length ? <ReactFlow key={uiScale} nodes={displayNodes} edges={displayEdges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} nodesConnectable={false} onInit={instance => { refit.current = true; setFlowInstance(instance); }} minZoom={0.05} fitView fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1, minZoom: READABLE_START }} onNodesChange={onNodesChange} onNodeDragStart={(_, node) => { dragOrigin.current = { ...node.position }; }} onNodeDragStop={savePosition} onNodeClick={(_, node) => { if (node.id.startsWith('proposal-')) { selectRecord({ kind: 'proposal', id: node.id }); return; } const source = visibleData.nodes.find(item => item.id === node.id); selectRecord(source ? { kind: source.kind, id: source.id } : null); }}><Background gap={20} /><Controls fitViewOptions={{ padding: 0.05, maxZoom: 1.1, minZoom: 0.05 }} /></ReactFlow> : <EmptyWorkspace onStart={beginAim} />}</section>
       <PaneSplitter side="right" value={paneWidths.right} onChange={right => setPaneWidths(current => ({ ...current, right }))} />
       <aside className="inspector">{error && <ErrorNotice raw={error} onClose={() => setError('')} />}<Inspector onOpenProject={folder => void openLinkedProject(folder)} ao={aoStatus} onCreateAim={beginAim} onRetry={retryNow} hiddenIds={archivedIds} onRestore={restore} aim={selectedAim} proposal={selectedProposal} goal={activeGoal} attempt={selectedAttempt} data={data} activity={activity} admission={admission} busy={busy} onSelect={selectRecord} submit={submit} run={run} onArchive={archive} focus={selection?.focus} actions={scopedActions} allActions={visibleActions} onOpenInbox={() => setView('inbox')} composer={composer} onCancelComposer={() => setComposer(null)} /></aside>
     </div>}
@@ -722,17 +724,38 @@ export function betterArrangement(candidate: { width: number; height: number }, 
 }
 
 export type GraphLayout = 'columns' | 'list';
-export type GraphFilter = { hideDoneAims: boolean; hideDoneGoals: boolean; hideClosedProposals: boolean; collapseDoneAims?: boolean };
-export const NO_GRAPH_FILTER: GraphFilter = { hideDoneAims: false, hideDoneGoals: false, hideClosedProposals: false, collapseDoneAims: false };
+// Each finished state is hidden on its own, so verified Goals can stay while stopped ones go (goal-169).
+export type GraphFilter = { hideAchievedAims: boolean; hideAbandonedAims: boolean; hideVerifiedGoals: boolean; hideStoppedGoals: boolean; hideClosedProposals: boolean; collapseDoneAims: boolean };
+export const NO_GRAPH_FILTER: GraphFilter = { hideAchievedAims: false, hideAbandonedAims: false, hideVerifiedGoals: false, hideStoppedGoals: false, hideClosedProposals: false, collapseDoneAims: false };
 const DONE_AIM = new Set(['achieved', 'abandoned']);
 const DONE_GOAL = new Set(['verified', 'stopped']);
+// Reads a saved filter. The earlier format hid two states with one switch: hideDoneAims meant achieved and
+// abandoned Aims, hideDoneGoals verified and stopped Goals; both carry over as the two separate switches.
+export function readGraphFilter(saved: unknown): GraphFilter {
+  const raw = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>;
+  const flag = (key: string, legacy?: string) => typeof raw[key] === 'boolean' ? raw[key] as boolean : legacy ? raw[legacy] === true : false;
+  return {
+    hideAchievedAims: flag('hideAchievedAims', 'hideDoneAims'), hideAbandonedAims: flag('hideAbandonedAims', 'hideDoneAims'),
+    hideVerifiedGoals: flag('hideVerifiedGoals', 'hideDoneGoals'), hideStoppedGoals: flag('hideStoppedGoals', 'hideDoneGoals'),
+    hideClosedProposals: flag('hideClosedProposals'), collapseDoneAims: flag('collapseDoneAims'),
+  };
+}
+const aimHidden = (filter: GraphFilter, phase: string) => (phase === 'achieved' && filter.hideAchievedAims) || (phase === 'abandoned' && filter.hideAbandonedAims);
+const goalHidden = (filter: GraphFilter, phase: string) => (phase === 'verified' && filter.hideVerifiedGoals) || (phase === 'stopped' && filter.hideStoppedGoals);
+export type FilterCounts = { achieved: number; abandoned: number; verified: number; stopped: number; closed: number };
+// How many records each filter switch covers (records hidden on this PC are not counted).
+export function filterCounts(data: Projection | null | undefined, archivedIds: Set<string>): FilterCounts {
+  const aims = (data?.aims ?? []).filter(aim => !archivedIds.has(aim.id)); const goals = (data?.goals ?? []).filter(goal => !archivedIds.has(goal.id));
+  const proposals = (data?.proposals ?? []).filter(proposal => !archivedIds.has(proposal.id));
+  return { achieved: aims.filter(aim => aim.phase === 'achieved').length, abandoned: aims.filter(aim => aim.phase === 'abandoned').length, verified: goals.filter(goal => goal.phase === 'verified').length, stopped: goals.filter(goal => goal.phase === 'stopped').length, closed: proposals.filter(proposal => proposal.status === 'closed').length };
+}
 
 // What the graph draws and where Goals sit. A display filter never changes records; hidden items stay
 // reachable from the navigator and the search. In the column layout each accepted Goal keeps the column of
 // the Proposal it came from even when Proposal nodes are not drawn.
 export function graphVisibility(data: Projection, archivedIds: Set<string>, filter: GraphFilter, showProposals: boolean, layout: GraphLayout, expanded: ReadonlySet<string> = new Set()) {
-  const baseAims = data.aims.filter(aim => !archivedIds.has(aim.id) && !(filter.hideDoneAims && DONE_AIM.has(aim.phase)));
-  const passingGoals = data.goals.filter(goal => !archivedIds.has(goal.id) && !(filter.hideDoneGoals && DONE_GOAL.has(goal.phase)));
+  const baseAims = data.aims.filter(aim => !archivedIds.has(aim.id) && !aimHidden(filter, aim.phase));
+  const passingGoals = data.goals.filter(goal => !archivedIds.has(goal.id) && !goalHidden(filter, goal.phase));
   // Collapse: an achieved Aim whose whole subtree is finished becomes one card with a count of what it hides.
   const collapsed = new Map<string, { aims: number; goals: number }>(); const collapsible = new Set<string>(); const foldedAims = new Set<string>();
   if (filter.collapseDoneAims) {
@@ -776,21 +799,41 @@ export function CollapseToggle({ note, expanded, onToggle }: { note?: { aims: nu
   return <div className="collapse-note">{note && <small>접힘 · 하위 목표 {note.aims}개 · 과제 {note.goals}개</small>}<button type="button" className="nodrag nopan" onClick={event => { event.stopPropagation(); onToggle(); }}>{expanded ? '접기' : '펼치기'}</button></div>;
 }
 
-export function GraphFilterMenu({ filter, onChange, hidden }: { filter: GraphFilter; onChange: (filter: GraphFilter) => void; hidden: { aims: number; goals: number } }) {
-  const active = filter.hideDoneAims || filter.hideDoneGoals || filter.hideClosedProposals || !!filter.collapseDoneAims;
-  const option = (key: keyof GraphFilter, label: string) => <label className="check"><input type="checkbox" checked={!!filter[key]} onChange={event => onChange({ ...filter, [key]: event.target.checked })} />{label}</label>;
+export function GraphFilterMenu({ filter, onChange, hidden, counts }: { filter: GraphFilter; onChange: (filter: GraphFilter) => void; hidden: { aims: number; goals: number }; counts?: FilterCounts }) {
+  const active = Object.values(filter).some(Boolean);
+  const option = (key: keyof GraphFilter, label: string, count?: number) => <label className="check"><input type="checkbox" checked={!!filter[key]} onChange={event => onChange({ ...filter, [key]: event.target.checked })} /><span>{label}</span>{count !== undefined && <small className="filter-count">{count}</small>}</label>;
+  const group = (title: string, children: React.ReactNode) => <fieldset className="filter-group"><legend>{title}</legend>{children}</fieldset>;
   return <details className={`header-menu graph-filter${active ? ' active' : ''}`}><summary>표시 필터{active ? ` · 숨김 목표 ${hidden.aims} · 과제 ${hidden.goals}` : ''}</summary><div className="header-menu-content">
-    {option('hideDoneAims', '달성·그만둔 목표 숨기기')}
-    {option('hideDoneGoals', '검증·중단된 과제 숨기기')}
-    {option('hideClosedProposals', '닫힌 접근안 숨기기')}
-    {option('collapseDoneAims', '달성된 목표의 하위 구조 접기')}
+    <p className="filter-intro">선택한 상태의 항목을 그래프에서 숨깁니다.</p>
+    {group('목표', <>{option('hideAchievedAims', '달성됨', counts?.achieved)}{option('hideAbandonedAims', '그만둠', counts?.abandoned)}</>)}
+    {group('과제', <>{option('hideVerifiedGoals', '검증됨', counts?.verified)}{option('hideStoppedGoals', '중단됨', counts?.stopped)}</>)}
+    {group('접근안', option('hideClosedProposals', '닫힘', counts?.closed))}
+    {group('구조', option('collapseDoneAims', '달성된 목표의 하위 구조 접기'))}
     <p className="tab-hint">이 PC 화면에서만 숨깁니다. 기록은 그대로이고, 목표 목록과 검색에서 계속 찾을 수 있습니다.</p>
     {active && <button type="button" className="quiet" onClick={() => onChange(NO_GRAPH_FILTER)}>모두 보이기</button>}
   </div></details>;
 }
 
-export function AimNavigator({ aims, goals, selected, onSelect, onCreate = () => undefined, hidden = [], onRestore = () => undefined }: { aims: Aim[]; goals: Goal[]; selected: Selection; onSelect: (value: Selection) => void; onCreate?: () => void; hidden?: Array<{ id: string; label: string }>; onRestore?: (id: string) => void }) {
+const NAVIGATOR_GROUPS_KEY = 'goal-loop.navigator.groups';
+export const NAVIGATOR_COLLAPSED_KEY = 'goal-loop.navigator.collapsed';
+// Finished groups start folded; the folded groups are a display preference of this PC (goal-168).
+function readFoldedGroups(): Set<string> {
+  try { const saved = JSON.parse(localStorage.getItem(NAVIGATOR_GROUPS_KEY) ?? 'null'); if (Array.isArray(saved)) return new Set(saved.filter(item => typeof item === 'string')); } catch { /* no storage */ }
+  return new Set(['achieved', 'abandoned']);
+}
+
+export function AimNavigator({ aims, goals, selected, onSelect, onCreate = () => undefined, hidden = [], onRestore = () => undefined, collapsed = false, onCollapsedChange }: { aims: Aim[]; goals: Goal[]; selected: Selection; onSelect: (value: Selection) => void; onCreate?: () => void; hidden?: Array<{ id: string; label: string }>; onRestore?: (id: string) => void; collapsed?: boolean; onCollapsedChange?: (collapsed: boolean) => void }) {
   const groups = [['open', '진행 중 목표'], ['achieved', '달성된 목표'], ['abandoned', '그만둔 목표']] as const;
+  const [folded, setFolded] = useState<Set<string>>(readFoldedGroups);
+  const saveFolded = (next: Set<string>) => { setFolded(next); try { localStorage.setItem(NAVIGATOR_GROUPS_KEY, JSON.stringify([...next])); } catch { /* optional preference */ } };
+  const toggleGroup = (phase: string) => { const next = new Set(folded); if (next.has(phase)) next.delete(phase); else next.add(phase); saveFolded(next); };
+  // A selection made elsewhere (graph, search) opens the group that holds it so the selected row is visible.
+  const selectedPhase = selected?.kind === 'aim' ? aims.find(aim => aim.id === selected.id)?.phase : undefined;
+  useEffect(() => { if (selectedPhase && folded.has(selectedPhase)) { const next = new Set(folded); next.delete(selectedPhase); saveFolded(next); } }, [selected?.kind === 'aim' ? selected.id : undefined, selectedPhase]);  // eslint-disable-line react-hooks/exhaustive-deps
+  if (collapsed) {
+    const openCount = aims.filter(aim => aim.phase === 'open').length;
+    return <aside className="aim-navigator navigator-rail" aria-label="목표 목록(접힘)"><button type="button" className="quiet rail-toggle" aria-label="목록 펼치기" title="목록 펼치기" onClick={() => onCollapsedChange?.(false)}>»</button><span className="rail-count" title={`진행 중 목표 ${openCount}개`}>진행 중<b>{openCount}</b></span></aside>;
+  }
   // Depth-first order keeps each sub-Aim right below its parent; indentation counts only ancestors shown in the same group.
   const known = new Set(aims.map(aim => aim.id));
   const ordered: Aim[] = []; const visit = (aim: Aim, guard = 0) => { ordered.push(aim); if (guard < 20) aims.filter(child => child.parent_aim_id === aim.id).forEach(child => visit(child, guard + 1)); };
@@ -798,7 +841,7 @@ export function AimNavigator({ aims, goals, selected, onSelect, onCreate = () =>
   const byId = new Map(aims.map(aim => [aim.id, aim]));
   const indent = (aim: Aim) => { let depth = 0; for (let cursor = aim.parent_aim_id ? byId.get(aim.parent_aim_id) : undefined; cursor && depth < 20; cursor = cursor.parent_aim_id ? byId.get(cursor.parent_aim_id) : undefined) if (cursor.phase === aim.phase) depth += 1; return depth; };
   const parentOutside = (aim: Aim) => { const parent = aim.parent_aim_id ? byId.get(aim.parent_aim_id) : undefined; return parent && parent.phase !== aim.phase ? parent : undefined; };
-  return <aside className="aim-navigator"><div className="panel-heading"><div><h2>목표 목록</h2><p>이루고 싶은 변화와 과제를 찾습니다.</p></div><span>{aims.length}</span></div><button className="navigator-create" onClick={onCreate}>＋ 새 목표</button>{groups.map(([phase, title]) => <section key={phase}><h3>{title.replace('Aim', '목표')}</h3>{ordered.filter(aim => aim.phase === phase).map(aim => { const depth = indent(aim); const outside = parentOutside(aim); const subCount = aims.filter(child => child.parent_aim_id === aim.id).length; return <button className={`aim-row ${depth ? 'sub-aim' : ''} ${selected?.kind === 'aim' && selected.id === aim.id ? 'active' : ''}`} style={depth ? { '--aim-depth': depth } as React.CSSProperties : undefined} key={aim.id} onClick={() => onSelect({ kind: 'aim', id: aim.id })}><span>{depth ? '↳ ' : ''}{aim.description}</span><small>{subCount ? `하위 목표 ${subCount}개 · ` : ''}과제 {goals.filter(goal => goal.aim_id === aim.id).length}개{aim.paused ? ' · 잠시 멈춤' : ''}{outside ? ` · 상위: ${outside.description}` : ''}</small></button>; })}{aims.every(aim => aim.phase !== phase) && <p className="empty-note">없음</p>}</section>)}{hidden.length > 0 && <details className="hidden-items"><summary>숨긴 항목 {hidden.length}개</summary><p>이 PC 화면에서만 숨긴 것이고, 기록은 그대로입니다.</p><ul>{hidden.map(item => <li key={item.id}><span>{item.label}</span><button type="button" className="quiet" onClick={() => onRestore(item.id)}>다시 보기</button></li>)}</ul></details>}</aside>;
+  return <aside className="aim-navigator"><div className="panel-heading"><div><h2>목표 목록</h2><p>이루고 싶은 변화와 과제를 찾습니다.</p></div><div className="navigator-heading-actions"><span>{aims.length}</span>{onCollapsedChange && <button type="button" className="quiet rail-toggle" aria-label="목록 접기" title="목록 접기" onClick={() => onCollapsedChange(true)}>«</button>}</div></div><button className="navigator-create" onClick={onCreate}>＋ 새 목표</button>{groups.map(([phase, title]) => { const count = aims.filter(aim => aim.phase === phase).length; const open = !folded.has(phase); return <section key={phase} className={open ? '' : 'folded'}><h3><button type="button" className="group-toggle" aria-expanded={open} onClick={() => toggleGroup(phase)}><span aria-hidden="true">{open ? '▾' : '▸'}</span>{title}<small>{count}</small></button></h3>{open && <>{ordered.filter(aim => aim.phase === phase).map(aim => { const depth = indent(aim); const outside = parentOutside(aim); const subCount = aims.filter(child => child.parent_aim_id === aim.id).length; return <button className={`aim-row ${depth ? 'sub-aim' : ''} ${selected?.kind === 'aim' && selected.id === aim.id ? 'active' : ''}`} style={depth ? { '--aim-depth': depth } as React.CSSProperties : undefined} key={aim.id} onClick={() => onSelect({ kind: 'aim', id: aim.id })}><span>{depth ? '↳ ' : ''}{aim.description}</span><small>{subCount ? `하위 목표 ${subCount}개 · ` : ''}과제 {goals.filter(goal => goal.aim_id === aim.id).length}개{aim.paused ? ' · 잠시 멈춤' : ''}{outside ? ` · 상위: ${outside.description}` : ''}</small></button>; })}{!count && <p className="empty-note">없음</p>}</>}</section>; })}{hidden.length > 0 && <details className="hidden-items"><summary>숨긴 항목 {hidden.length}개</summary><p>이 PC 화면에서만 숨긴 것이고, 기록은 그대로입니다.</p><ul>{hidden.map(item => <li key={item.id}><span>{item.label}</span><button type="button" className="quiet" onClick={() => onRestore(item.id)}>다시 보기</button></li>)}</ul></details>}</aside>;
 }
 
 function Inspector({ onOpenProject, ao = [], aim, proposal, goal, attempt, data, activity, admission, busy, onSelect, submit, run, onArchive, focus, actions, allActions = [], onOpenInbox, onCreateAim, onRetry, hiddenIds, onRestore, composer, onCancelComposer }: { ao?: AoStatusRow[]; hiddenIds?: Set<string>; onRestore?: (id: string) => void; onRetry?: RetryHandler; onCreateAim?: () => void; focus?: 'contract' | 'add-proposal' | 'stop'; aim?: Aim; proposal?: Proposal; goal?: Goal; attempt?: Attempt; data: Projection; activity: ActivityCard[]; admission: Admission; busy: boolean; onSelect: (value: Selection) => void; submit: (command: string, args: (form: HTMLFormElement) => string[]) => (event: FormEvent<HTMLFormElement>) => Promise<void>; run: (command: string, args: string[], notice?: string) => Promise<void>; onArchive: (id: string) => void; actions: Action[]; allActions?: Action[]; onOpenInbox?: () => void; composer: 'aim' | null; onCancelComposer: () => void; onOpenProject?: (folder: string) => void }) {

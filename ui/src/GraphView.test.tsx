@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, startMinZoom, fitDue, routeDependencies, emphasizeConnected, FIT_FLOOR, READABLE_START, graphVisibility, NO_GRAPH_FILTER, Workspace } from './Workspace';
+import { EDGE_COLORS, followFlow, graphEdges, highlightFlow, betterArrangement, startMinZoom, fitDue, routeDependencies, emphasizeConnected, FIT_FLOOR, READABLE_START, graphVisibility, NO_GRAPH_FILTER, readGraphFilter, filterCounts, GraphFilterMenu, Workspace } from './Workspace';
 
 const goal = (id: string, aim: string, phase: string) => ({ id, aim_id: aim, phase, target: `과제 ${id}`, responsibility: 'produce', current_contract_version: 1, verifying_attempt_id: null, held: false, contract: {} });
 const data = {
@@ -38,11 +38,44 @@ describe('graph visibility', () => {
   });
 
   it('filters finished Aims with their Goals, finished Goals, and closed Proposals, and counts what it hid', () => {
-    const filtered = graphVisibility(data, none, { hideDoneAims: true, hideDoneGoals: true, hideClosedProposals: true }, true, 'columns');
+    const filtered = graphVisibility(data, none, { ...NO_GRAPH_FILTER, hideAchievedAims: true, hideAbandonedAims: true, hideVerifiedGoals: true, hideStoppedGoals: true, hideClosedProposals: true }, true, 'columns');
     expect(filtered.aims.map(item => item.id)).toEqual(['aim-1']);
     expect(filtered.goals.map(item => item.id)).toEqual(['goal-1']);
     expect(filtered.proposals.map(item => item.id)).toEqual(['proposal-1', 'proposal-3']);  // proposal-2's Goal is hidden, proposal-4 is closed
     expect(filtered.hidden).toEqual({ aims: 1, goals: 2 });
+  });
+
+  it('hides each finished state on its own (goal-169)', () => {
+    const base = data as unknown as { aims: object[]; goals: object[] };
+    const mixed = { ...base,
+      aims: [...base.aims, { id: 'aim-3', description: '그만둔 목표', phase: 'abandoned', paused: false, currently_achieved: false }],
+      goals: [...base.goals, goal('goal-4', 'aim-1', 'stopped')] } as never;
+    const ids = (filter: Partial<typeof NO_GRAPH_FILTER>) => { const view = graphVisibility(mixed, none, { ...NO_GRAPH_FILTER, ...filter }, true, 'columns'); return [view.aims.map(item => item.id), view.goals.map(item => item.id)]; };
+    expect(ids({ hideStoppedGoals: true })).toEqual([['aim-1', 'aim-2', 'aim-3'], ['goal-1', 'goal-2', 'goal-3']]);  // verified Goals stay
+    expect(ids({ hideVerifiedGoals: true })).toEqual([['aim-1', 'aim-2', 'aim-3'], ['goal-1', 'goal-4']]);
+    expect(ids({ hideAbandonedAims: true })[0]).toEqual(['aim-1', 'aim-2']);  // achieved Aims stay
+    expect(ids({ hideAchievedAims: true })).toEqual([['aim-1', 'aim-3'], ['goal-1', 'goal-2', 'goal-4']]);
+    expect(filterCounts(mixed, none)).toEqual({ achieved: 1, abandoned: 1, verified: 2, stopped: 1, closed: 1 });
+    expect(filterCounts(mixed, new Set(['goal-4', 'aim-3'])).stopped).toBe(0);  // records hidden on this PC are not counted
+  });
+
+  it('reads the earlier saved filter as the two separate switches it stood for', () => {
+    expect(readGraphFilter({ hideDoneAims: true, hideDoneGoals: false, hideClosedProposals: true, collapseDoneAims: true })).toEqual({
+      hideAchievedAims: true, hideAbandonedAims: true, hideVerifiedGoals: false, hideStoppedGoals: false, hideClosedProposals: true, collapseDoneAims: true });
+    expect(readGraphFilter({ hideDoneGoals: true })).toMatchObject({ hideVerifiedGoals: true, hideStoppedGoals: true, hideAchievedAims: false });
+    expect(readGraphFilter({ hideDoneAims: true, hideAbandonedAims: false })).toMatchObject({ hideAchievedAims: true, hideAbandonedAims: false });  // a new value wins
+    expect(readGraphFilter(null)).toEqual(NO_GRAPH_FILTER);
+    expect(readGraphFilter('broken')).toEqual(NO_GRAPH_FILTER);
+  });
+
+  it('groups the filter menu by record kind with state names and counts', () => {
+    const onChange = vi.fn();
+    const { container } = render(<GraphFilterMenu filter={NO_GRAPH_FILTER} onChange={onChange} hidden={{ aims: 0, goals: 0 }} counts={{ achieved: 3, abandoned: 1, verified: 9, stopped: 2, closed: 4 }} />);
+    const groups = Array.from(container.querySelectorAll('fieldset')).map(set => [set.querySelector('legend')?.textContent, Array.from(set.querySelectorAll('label')).map(label => label.textContent)]);
+    expect(groups).toEqual([['목표', ['달성됨3', '그만둠1']], ['과제', ['검증됨9', '중단됨2']], ['접근안', ['닫힘4']], ['구조', ['달성된 목표의 하위 구조 접기']]]);
+    expect(screen.getByText('선택한 상태의 항목을 그래프에서 숨깁니다.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: /중단됨/ }));
+    expect(onChange).toHaveBeenCalledWith({ ...NO_GRAPH_FILTER, hideStoppedGoals: true });
   });
 });
 
@@ -98,15 +131,51 @@ describe('graph controls in the workspace', () => {
     render(<Workspace />);
     await waitFor(() => expect(nodeIds()).toContain('goal-2'));
     fireEvent.click(screen.getByText('표시 필터'));
-    fireEvent.click(screen.getByRole('checkbox', { name: '달성·그만둔 목표 숨기기' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: '검증·중단된 과제 숨기기' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^달성됨/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^검증됨/ }));
     await waitFor(() => expect(nodeIds()).not.toContain('goal-2'));
     expect(nodeIds()).not.toContain('aim-2');
     expect(nodeIds()).not.toContain('goal-3');
     expect(screen.getByText(/숨김 목표 1 · 과제 2/)).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}')).toMatchObject({ hideDoneAims: true, hideDoneGoals: true });
+    expect(JSON.parse(localStorage.getItem('goal-loop.graph.filter') ?? '{}')).toMatchObject({ hideAchievedAims: true, hideAbandonedAims: false, hideVerifiedGoals: true, hideStoppedGoals: false });
     fireEvent.click(screen.getByRole('button', { name: '모두 보이기' }));
     await waitFor(() => expect(nodeIds()).toContain('goal-3'));
+  });
+
+  it('applies a filter saved in the earlier format', async () => {
+    localStorage.setItem('goal-loop.graph.filter', JSON.stringify({ hideDoneGoals: true }));
+    render(<Workspace />);
+    await waitFor(() => expect(nodeIds()).toContain('goal-1'));
+    expect(nodeIds()).not.toContain('goal-2');
+    expect(nodeIds()).toContain('aim-2');
+  });
+
+  it('opens the whole workspace and folds the navigator when this PC has no usable storage (goal-168)', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked storage'); });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked storage'); });
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked storage'); });
+    try {
+      render(<Workspace />);
+      await waitFor(() => expect(nodeIds()).toContain('goal-1'));
+      expect(screen.getByRole('button', { name: /달성된 목표/ }).getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(screen.getByRole('button', { name: '목록 접기' }));
+      expect(document.querySelector('.workspace-grid')?.className).toContain('navigator-collapsed');
+      fireEvent.click(screen.getByRole('button', { name: '목록 펼치기' }));
+      fireEvent.click(screen.getByRole('button', { name: /달성된 목표/ }));
+      expect(screen.getByRole('button', { name: /달성된 목표/ }).getAttribute('aria-expanded')).toBe('true');
+    } finally { getItem.mockRestore(); setItem.mockRestore(); removeItem.mockRestore(); }
+  });
+
+  it('folds the Aim navigator to widen the graph and remembers it (goal-168)', async () => {
+    const first = render(<Workspace />);
+    fireEvent.click(await screen.findByRole('button', { name: '목록 접기' }));
+    expect(document.querySelector('.workspace-grid')?.className).toContain('navigator-collapsed');
+    expect(localStorage.getItem('goal-loop.navigator.collapsed')).toBe('true');
+    first.unmount();
+    render(<Workspace />);
+    fireEvent.click(await screen.findByRole('button', { name: '목록 펼치기' }));
+    expect(document.querySelector('.workspace-grid')?.className).not.toContain('navigator-collapsed');
+    expect(localStorage.getItem('goal-loop.navigator.collapsed')).toBe('false');
   });
 });
 

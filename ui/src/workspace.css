@@ -537,3 +537,25 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 /* Reference list text follows the same steps (goal-147) */
 .reference-list li { font-size: calc(13px * var(--ui-scale)); }
 .reference-list li > small, .reference-list .link-button small { font-size: calc(12px * var(--ui-scale)); }
+/* goal-168: folding navigator groups and the whole navigator */
+.navigator-heading-actions{display:flex;align-items:center;gap:calc(6px * var(--ui-scale))}
+.aim-navigator .rail-toggle{padding:calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));font-size:calc(13px * var(--ui-scale));line-height:1;border:1px solid #d5dce8;background:#fff;color:#334155}
+.aim-navigator .rail-toggle:hover,.aim-navigator .rail-toggle:focus-visible{background:#eef2ff;border-color:#a5b4fc}
+.aim-navigator h3 .group-toggle{display:flex;align-items:center;gap:calc(6px * var(--ui-scale));width:100%;padding:calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));background:transparent;color:inherit;font:inherit;letter-spacing:inherit;text-align:left;border-radius:6px}
+.aim-navigator h3 .group-toggle:hover,.aim-navigator h3 .group-toggle:focus-visible{background:#f1f5f9}
+.aim-navigator h3 .group-toggle>span{width:1em;color:#94a3b8}
+.aim-navigator h3 .group-toggle small{margin-left:auto;padding:1px 7px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:calc(11px * var(--ui-scale))}
+.aim-navigator section.folded h3{margin-bottom:0}
+.workspace-grid.navigator-collapsed{grid-template-columns:calc(46px * var(--ui-scale)) calc(10px * var(--ui-scale)) minmax(calc(320px * var(--ui-scale)),1fr) calc(10px * var(--ui-scale)) minmax(calc(280px * var(--ui-scale)),calc(var(--right-pane) * var(--ui-scale)))}
+.workspace-grid.navigator-collapsed>.pane-splitter:first-of-type{visibility:hidden;pointer-events:none}
+.aim-navigator.navigator-rail{display:flex;flex-direction:column;align-items:center;gap:calc(10px * var(--ui-scale));padding:calc(10px * var(--ui-scale)) 0;overflow:hidden}
+.navigator-rail .rail-count{display:grid;justify-items:center;gap:2px;color:#64748b;font-size:calc(10px * var(--ui-scale));writing-mode:horizontal-tb}
+.navigator-rail .rail-count b{font-size:calc(13px * var(--ui-scale));color:#334155}
+@media(max-width:1100px){.workspace-grid.navigator-collapsed{grid-template-columns:calc(46px * var(--ui-scale)) calc(8px * var(--ui-scale)) minmax(calc(400px * var(--ui-scale)),1fr) calc(8px * var(--ui-scale)) calc(360px * var(--ui-scale))}}
+@media(max-width:760px){.aim-navigator.navigator-rail{flex-direction:row;justify-content:flex-start;padding:calc(8px * var(--ui-scale))}}
+/* goal-169: the display filter grouped by record kind */
+.graph-filter .filter-intro{margin:0;color:#475569;font-size:calc(12px * var(--ui-scale));font-weight:600}
+.graph-filter .filter-group{display:grid;gap:calc(4px * var(--ui-scale));margin:0;padding:calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));border:1px solid #e2e8f0;border-radius:8px}
+.graph-filter .filter-group legend{padding:0 4px;color:#64748b;font-size:calc(11px * var(--ui-scale));font-weight:700}
+.graph-filter .filter-group label.check span{flex:1}
+.graph-filter .filter-count{padding:0 6px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:calc(11px * var(--ui-scale))}
