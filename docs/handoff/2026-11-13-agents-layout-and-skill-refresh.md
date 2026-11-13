@@ -16,14 +16,22 @@ agent-workbench(`github.com/hanyki111/agent-workbench`)는 Goal Loop와 Memory T
 ## 2. 요청하는 작업
 
 1. **`project-init`이 `@AGENTS.md` 구성을 알게 하기.** 지금은 `--agents claude,codex`를 실행하면 `AGENTS.md`에 "이 에이전트의 이름은 `codex`" 절이 들어가고, `CLAUDE.md`에도 "이 에이전트의 이름은 `claude`" 절이 덧붙습니다(`goal_loop_tool/agent_setup.py`의 `instruction_section`). 그런데 Claude는 `@AGENTS.md`를 통해 `AGENTS.md`의 절도 읽기 때문에, 서로 다른 이름과 판정자를 적은 절 두 개를 함께 읽게 됩니다. 그래서 Claude가 자기 이름과 판정자를 혼동할 수 있습니다. `CLAUDE.md`에 `@AGENTS.md` 줄이 있으면 다음 가운데 하나를 하도록 바꿔 주십시오.
-   - (가) `AGENTS.md`에는 두 에이전트를 함께 적은 공통 절을 씁니다. 예를 들어 "Claude Code는 `claude`, Codex는 `codex`라는 이름으로 기록하고, 판정은 실행하지 않은 쪽(`claude`가 실행하면 `codex`, 그 반대도 같음)에 맡긴다"처럼 씁니다. `CLAUDE.md`에는 "`claude`로 기록한다" 한 줄만 둡니다. Codex는 `AGENTS.md`만 읽으므로 Codex의 이름과 판정자는 반드시 `AGENTS.md`에 있어야 하고, Claude도 그 파일을 읽으므로 Codex 전용 절을 따로 둘 수 없습니다. 이 저장소의 `AGENTS.md`(Development tracking 절)와 `CLAUDE.md`가 이미 이 형태입니다.
+   - (가) `AGENTS.md`에는 두 에이전트를 함께 적은 공통 절 하나를 씁니다. `CLAUDE.md`에는 `@AGENTS.md` 한 줄만 둡니다. 공통 절에 다음을 적습니다.
+     - 기록 이름: "기록 이름은 Claude Code가 `claude`, Codex가 `codex`이다."
+     - 판정: "Claude가 실행한 일은 `goal-loop-judge --judge <claude의 판정자>`, Codex가 실행한 일은 `--judge <codex의 판정자>`로 판정한다"처럼 두 경우를 한 줄에 씁니다. 판정자는 `judges_by_agent` 값을 씁니다.
+     - 스킬 위치: "Claude Code는 `.claude/skills/`, Codex는 `.agents/skills/`."
+     - Claude에만 해당하는 규칙이 없으면 `CLAUDE.md`에 "`claude`로 기록한다" 줄도 두지 않습니다. 공통 절에 이미 있기 때문입니다.
+
+     에이전트별 절(`## Codex`)을 `AGENTS.md`에 두고 `CLAUDE.md`에서 "Codex 절은 적용하지 않는다"고 명시하는 방식도 동작합니다. 하지만 이 방식은 Claude가 서로 어긋나는 이름을 함께 읽고 적용 제외 지시를 지킨다는 전제에 기댑니다. 공통 절 방식에는 어긋나는 문장이 없고 줄 수도 적습니다.
+
+     **agent-workbench와 합의함(2026-11-13):** agent-workbench는 0.1.6부터 `project-setup`의 문안을 위 형태로 바꿉니다. `project-init`이 이 형태를 구현해 릴리스하면, agent-workbench는 자체 문안 대신 `project-init`의 절을 쓰고 `--skills-only`를 기본에서 뺍니다. 릴리스하면 커밋이나 버전을 agent-workbench에 알려 주십시오.
    - (나) 절을 쓰지 않고 경고하며 `--skills-only`를 권합니다.
 
-   agent-workbench는 지금 이 문제를 피하려고 언제나 `--skills-only`를 쓰고, 공통 규칙은 자체 문안으로 씁니다. (가)가 구현되면 agent-workbench는 그 문안을 버리고 `project-init`의 절을 쓰겠습니다.
+   agent-workbench는 지금 이 문제를 피하려고 언제나 `--skills-only`를 쓰고, 공통 규칙은 자체 문안으로 씁니다.
 
 2. **직접 쓴 Goal Loop 지침이 있을 때 경고하기.** `memory_notion`에는 거시 저널용으로 직접 쓴 Goal Loop 절이 있습니다. 그런데 `--skills-only` 없이 실행하자, 생성 절이 하나 더 추가되어 세션 시작 절차와 판정 규칙이 두 번 들어갔습니다. 표지 밖에 이미 `goal-loop` 명령이나 Goal Loop 절이 있으면, 절을 추가하기 전에 경고해 주십시오.
 
-3. **고치지 않은 예전 템플릿 사본을 교체하기.** 지금은 내용이 다른 스킬 파일이 모두 `kept`로 남습니다. 그래서 아무도 고치지 않은 예전 템플릿 사본도 교체되지 않습니다. `memory_notion`에서는 결함이 있던 예전 `goal-loop` 스킬을 손으로 지운 뒤 다시 실행해야 했습니다. 설치한 템플릿의 해시나 버전을 기록해 두고, 고쳐지지 않은 사본이면 자동으로 교체하는 방식을 검토해 주십시오. 사용자가 고친 사본은 지금처럼 `kept`로 남깁니다.
+3. **고치지 않은 예전 템플릿 사본을 교체하기.** 지금은 내용이 다른 스킬 파일이 모두 `kept`로 남습니다. 그래서 아무도 고치지 않은 예전 템플릿 사본도 교체되지 않습니다. `memory_notion`에서는 결함이 있던 예전 `goal-loop` 스킬을 손으로 지운 뒤 다시 실행해야 했습니다. 설치한 템플릿의 해시나 버전을 기록해 두고, 고쳐지지 않은 사본이면 자동으로 교체하는 방식을 검토해 주십시오. 사용자가 고친 사본은 지금처럼 `kept`로 남깁니다. agent-workbench는 `kept` 여부만 보므로, 이 기능이 릴리스되면 `project-setup` 3단계의 "지우고 다시 실행" 절차를 지우겠다고 했습니다(2026-11-13).
    - 검토할 때 설치 기록을 어디에 둘지도 정해야 합니다. 이 저장소처럼 `.claude/skills/`와 `.agents/skills/`의 사본을 git으로 추적하는 프로젝트에서는 스킬 폴더 안에 기록 파일을 두면 그 파일도 커밋 대상이 됩니다. `.goal-loop/`(버전 관리에서 제외됨)에 두면 다른 체크아웃에서는 기록이 없어 모든 사본을 `kept`로 보게 됩니다. 두 방식의 장단점을 비교해서 고르십시오.
 
 4. **이 저장소의 Memory Tool 설정 갱신.** Memory Tool 1.10.0에서 `guidelines.md`의 내용이 `mt-record` 스킬로 옮겨졌습니다. 그런데 이 저장소는 아직 갱신되지 않았습니다.
