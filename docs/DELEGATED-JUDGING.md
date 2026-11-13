@@ -1,8 +1,8 @@
 # Delegated judging in this repository
 
-Moved from `CLAUDE.md` unchanged on 2026-11-13 (goal-160), so the instruction files keep only the rules that
-always apply. The rule itself (a separate agent judges; never re-run a judgment to get a different result) stays
-in `AGENTS.md`. The `goal-loop` skill describes `goal-loop-judge`, the installed form of the same command.
+How delegated judging works, as used in this repository (moved from its agent instructions on 2026-11-13, goal-160).
+Commands below use this repository's `.venv`; `goal-loop-judge`, installed with `goal-loop`, is the same command,
+and the `goal-loop` skill describes it for other projects.
 
 Delegated judging (Decision 6, 2026-10-04): Verdicts and Aim evaluations are recorded from the judgment of a
 separate agent that did not execute the work, normally `codex` when `claude` executed (and vice versa).

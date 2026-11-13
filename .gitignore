@@ -15,6 +15,7 @@ build/
 .claude/guidelines.md
 .claude/settings.local.json
 .claude/skills/mt-*/
+.agents/skills/mt-*/
 artifacts/
 *.sqlite3
 /image_*.png
@@ -32,6 +33,9 @@ docs/AO-*.ko.md
 docs/DISTRIBUTION-AUDIT.ko.md
 docs/UI-MANUAL-QA-GUIDE.ko.md
 docs/archive/
+/AGENTS.md
+/CLAUDE.md
+docs/DESKTOP-APP-INSPECTION.md
 
 # goal-loop ui serves its own page; Vite's index.html from build:web is not used
 goal_loop_tool/web_files/index.html

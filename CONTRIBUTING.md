@@ -38,10 +38,52 @@ cargo build                                      # 데스크톱 앱(실행 중�
 2. 변경은 작게 나누고, Pull Request 설명에 바꾼 내용과 확인한 시험 결과를 적어 주십시오.
 3. 기록 형식(SQLite journal)이나 `ui-projection` schema를 바꾸면 기존 기록을 그대로 읽을 수 있는지 확인하는 시험을 넣어 주십시오.
 
+## 이 저장소에서 CLI 쓰기
+
+README에서 옮긴 내용입니다(goal-161).
+
+For this repository, install the command into the project virtual environment once:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+In this project, use `& .\.venv\Scripts\goal-loop.exe ...` unless its `Scripts` directory is
+already on your PATH. The shorter `goal-loop ...` form is for a shell where the command resolves.
+
+## 개념 검증용 메모리 MVP와 데모
+
+README에서 옮긴 내용입니다(goal-161).
+
+The in-memory core is a pre-product semantic prototype. It validates selected scenarios and
+counterexamples for immutable Goal Contracts, Attempt/Verdict separation, Contract-version
+safety, Evidence correction and review, execution admission, and explicit Aim Evaluation.
+The normative boundary is in [docs/MVP-SPEC.md](docs/MVP-SPEC.md). The persistent SQLite journal,
+the AI_ORCHESTRATION adapter and the Goal Tree were built on top of it later (see [docs/CLI-REFERENCE.md](docs/CLI-REFERENCE.md)).
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+한국어 단계 추적 데모입니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m goal_loop_tool demo
+.\.venv\Scripts\python.exe -m goal_loop_tool not-satisfied
+.\.venv\Scripts\python.exe -m goal_loop_tool inconclusive
+.\.venv\Scripts\python.exe -m goal_loop_tool contract-revision
+.\.venv\Scripts\python.exe -m goal_loop_tool evidence-invalidation
+.\.venv\Scripts\python.exe -m goal_loop_tool execution-admission
+.\.venv\Scripts\python.exe -m goal_loop_tool aim-evaluation
+```
+
+`demo` optionally accepts `--output <path>` for its newly created file. The default writes a
+new file under `artifacts/`.
+
 ## 이 저장소의 개발 방식
 
 이 저장소는 Goal Loop 자체로 개발을 기록합니다(dogfooding). 개발자의 기록 폴더(`.goal-loop/`, `.memory/`)와 개인 운영 메모(`*.local.md`)는
-`.gitignore`로 빠지며 공개 대상이 아닙니다. 에이전트용 일반 지침은 `CLAUDE.md`와 `AGENTS.md`에 있습니다.
+`.gitignore`로 빠지며 공개 대상이 아닙니다. 이 체크아웃에서 쓰는 에이전트 지침(`CLAUDE.md`, `AGENTS.md`)도 같은 이유로 공개하지 않습니다.
 
 ## 라이선스
 
