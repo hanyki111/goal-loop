@@ -440,11 +440,19 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .react-flow__edge.edge-parent path{stroke-width:2}
 .react-flow__edge.edge-dependency path{stroke-width:2;stroke-dasharray:6 4}
 .legend-line{display:inline-block;width:18px;height:0;background:none!important;border-top:2px solid #a78bfa}
-.legend-line.accepted{border-top-color:#10b981}
+/* goal-162: with Proposals shown the structure legend draws both segments: Aim → Proposal dashed, Proposal → Goal solid. */
+.legend-line.proposal{border-top-style:dashed}
+.legend-line.proposal+.legend-line.accepted{margin-left:-2px}
 .legend-line.aim-parent{border-top:3px solid #475569}
-.legend-line.parent{border-top-color:#3b82f6}
-.legend-line.dependency{border-top:2px dashed #f59e0b}
+.legend-line.parent{border-top-color:#2563eb}
+.legend-line.dependency{border-top:2px dashed #d97706;opacity:.7}
 .legend-line.follows{border-top:3px solid #14b8a6}
+/* goal-162: a larger legend so each line colour reads at a glance (the graph lines keep their widths). */
+.graph-legend{font-size:calc(12px * var(--ui-scale));row-gap:calc(6px * var(--ui-scale))}
+.graph-legend .legend-line{width:calc(28px * var(--ui-scale));border-top-width:3px}
+.graph-legend .legend-line.aim-parent,.graph-legend .legend-line.follows{border-top-width:4px}
+/* The legend sits on its own line below the layout, Proposal and filter controls. */
+.graph-legend .legend-items{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:calc(6px * var(--ui-scale)) calc(14px * var(--ui-scale))}
 .relation-list li{flex-wrap:wrap}
 .relation-list .relation-reason{flex-basis:100%;color:#64748b;font-size:calc(11px * var(--ui-scale))}
 .layout-choice select{width:auto;padding:1px 4px;font-size:inherit;margin-left:4px}
@@ -469,7 +477,7 @@ button.danger-action:hover:not(:disabled){background:#fef2f2;border-color:#f8717
 .graph-node.in-flow:not(.is-selected){border-color:#14b8a6!important;box-shadow:0 0 0 2px #99f6e4!important}
 .react-flow__edge.dimmed{opacity:.2}
 /* Dependency lines stay faint until their card is selected. */
-.react-flow__edge.edge-dependency path{opacity:.4}
+.react-flow__edge.edge-dependency path{opacity:.7}
 .react-flow__edge.is-connected path{opacity:1;stroke-width:3}
 .react-flow__edge.edge-follows.in-flow path{stroke-width:4}
 .follow-reason{position:absolute;z-index:1001;max-width:220px;padding:4px 8px;border:1px solid #5eead4;border-radius:6px;background:#f0fdfa;color:#0f766e;font-size:11px;line-height:1.35;box-shadow:0 2px 6px #0f766e26;pointer-events:none}
