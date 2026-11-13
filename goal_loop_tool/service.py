@@ -405,6 +405,39 @@ class GoalLoop:
         proposal.closure_reason = reason
         return proposal
 
+    def revise_aim_criteria(self, aim_id: str, criteria: str, superseded_proposal_ids: list[str], actor_id: str,
+                            reason: str) -> GoalProposal:
+        """Replace an open Aim's achievement criteria; the earlier criteria stay readable and point at the new ones.
+
+        The new criteria are a Proposal closed as ``criteria`` at once, like ``close_proposal(..., "criteria")``.
+        Only an open Aim is revised, so no Aim Evaluation was made against the criteria being replaced (goal-174).
+        """
+        aim = self._require(self.aims, aim_id, "Aim")
+        if aim.phase is not AimPhase.OPEN:
+            raise GoalLoopError("Only an open Aim's criteria can be revised.")
+        if not criteria.strip() or not actor_id.strip() or not reason.strip():
+            raise GoalLoopError("Revising Aim criteria requires the new criteria, the actor and a reason.")
+        if not superseded_proposal_ids:
+            raise GoalLoopError("Revising Aim criteria requires the criteria it replaces (--supersedes).")
+        if len(set(superseded_proposal_ids)) != len(superseded_proposal_ids):
+            raise GoalLoopError("Each replaced criteria Proposal is named once.")
+        replaced = []
+        for proposal_id in superseded_proposal_ids:
+            previous = self._require(self.proposals, proposal_id, "Proposal")
+            if previous.aim_id != aim_id or previous.status is not ProposalStatus.CLOSED or previous.closure_kind != "criteria":
+                raise GoalLoopError(f"{proposal_id} is not a criteria Proposal of {aim_id}.")
+            if previous.criteria_superseded_by_proposal_id:
+                raise GoalLoopError(f"{proposal_id} was already replaced by {previous.criteria_superseded_by_proposal_id}.")
+            replaced.append(previous)
+        successor = GoalProposal(
+            id=self._new_id("proposal"), aim_id=aim_id, direction=criteria, status=ProposalStatus.CLOSED,
+            proposed_by_actor_id=actor_id, closure_kind="criteria", closed_by_actor_id=actor_id, closure_reason=reason,
+        )
+        for previous in replaced:
+            previous.criteria_superseded_by_proposal_id = successor.id
+        self.proposals[successor.id] = successor
+        return successor
+
     def stop_goal(self, goal_id: str, actor_id: str, reason: str) -> Goal:
         """Stop pursuing a Goal. Running Attempts are not cancelled; their outcome can still be recorded."""
         goal = self._require(self.goals, goal_id, "Goal")

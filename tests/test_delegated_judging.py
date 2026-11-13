@@ -270,6 +270,33 @@ class DelegatedJudgingTests(unittest.TestCase):
         self.assertIn("(2) 문서가 있다", criteria_section)
         self.assertNotIn(criteria["id"], prompt.split("### 접근안", 1)[1].split("### 과제와 검증 판단", 1)[0])
 
+    def test_aim_prompt_gives_current_criteria_and_the_revision_history_apart(self):
+        # goal-174: criteria replaced by aim-criteria-revise are history, not the criteria to judge against.
+        old = run("proposal-create", self.aim["id"], "처음 기준\n(1) 제목도 감지한다")
+        run("proposal-close", old["id"], "--kind", "criteria", "--actor", "claude", "--reason", "목표의 달성 기준")
+        new = run("aim-criteria-revise", self.aim["id"], "바뀐 기준\n(1) 명령만 감지한다", "--supersedes", old["id"],
+                  "--actor", "owner", "--reason", "제목 감지는 끝나지 않아 뺀다")
+        seen = []
+        judge_aim(self.database, self.aim["id"], runner=fake_agent({"aim_id": self.aim["id"], "achieved": False, "cited": [], "criteria": [], "conclusion": "아직", "checked": [], "not_checked": []}, seen), base=self.work, record=False)
+        prompt = seen[0]["prompt"]
+        criteria_section = prompt.split("### 달성 기준", 1)[1].split("### 기준 변경 이력", 1)[0]
+        self.assertIn(new["id"], criteria_section)
+        self.assertIn("(1) 명령만 감지한다", criteria_section)
+        self.assertNotIn(old["id"], criteria_section)
+        history = prompt.split("### 기준 변경 이력", 1)[1].split("### 접근안", 1)[0]
+        self.assertIn(f"{old['id']} → {new['id']}, 결정자 owner, 이유: 제목 감지는 끝나지 않아 뺀다", history)
+        self.assertIn("(1) 제목도 감지한다", history)
+        approaches = prompt.split("### 접근안", 1)[1].split("### 과제와 검증 판단", 1)[0]
+        self.assertNotIn(old["id"], approaches)
+        self.assertNotIn(new["id"], approaches)
+
+    def test_aim_prompt_without_a_revision_has_no_history_section(self):
+        criteria = run("proposal-create", self.aim["id"], "기준")
+        run("proposal-close", criteria["id"], "--kind", "criteria", "--actor", "claude", "--reason", "목표의 달성 기준")
+        seen = []
+        judge_aim(self.database, self.aim["id"], runner=fake_agent({"aim_id": self.aim["id"], "achieved": False, "cited": [], "criteria": [], "conclusion": "아직", "checked": [], "not_checked": []}, seen), base=self.work, record=False)
+        self.assertNotIn("기준 변경 이력", seen[0]["prompt"])
+
     def test_aim_is_recorded_only_when_achieved_with_acceptable_citations(self):
         verdict = judge_goal(self.database, self.goal["id"], runner=fake_agent(verdict_answer(self.goal["id"], "satisfied"), []), base=self.work)["verdict"]
         base_answer = {"aim_id": self.aim["id"], "criteria": [{"item": "(1)", "met": "met", "basis": "b"}], "conclusion": "(1) 충족: 동작한다",

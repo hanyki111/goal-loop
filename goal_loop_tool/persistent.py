@@ -159,6 +159,17 @@ class PersistentGoalLoop:
             return proposal, JournalEvent(self._event_id(), "ProposalClosed", actor_id, "proposal", proposal_id, payload)
         return self._execute(command_id, "close_proposal", {"proposal_id": proposal_id, "closure_kind": closure_kind, "actor_id": actor_id, "reason": reason}, invoke)
 
+    def revise_aim_criteria(self, aim_id: str, criteria: str, superseded_proposal_ids: list[str], actor_id: str, reason: str,
+                            *, command_id=None) -> GoalProposal:
+        def invoke(loop):
+            proposal = loop.revise_aim_criteria(aim_id, criteria, superseded_proposal_ids, actor_id, reason)
+            payload = {"aim_id": aim_id, "proposal_id": proposal.id, "criteria": criteria,
+                       "superseded_proposal_ids": list(superseded_proposal_ids), "actor_id": actor_id, "reason": reason}
+            return proposal, JournalEvent(self._event_id(), "AimCriteriaRevised", actor_id, "aim", aim_id, payload)
+        request = {"aim_id": aim_id, "criteria": criteria, "superseded_proposal_ids": list(superseded_proposal_ids),
+                   "actor_id": actor_id, "reason": reason}
+        return self._execute(command_id, "revise_aim_criteria", request, invoke)
+
     def stop_goal(self, goal_id: str, actor_id: str, reason: str, *, command_id=None) -> Goal:
         def invoke(loop):
             goal = loop.stop_goal(goal_id, actor_id, reason)
@@ -639,6 +650,7 @@ def replay_journal(events, *, enforce_authority: bool = False) -> GoalLoop:
         elif event.event_type == "AimParentLinked": loop.link_aim_parent(p["child_aim_id"], p["parent_aim_id"])
         elif event.event_type == "ProposalCreated": loop.create_proposal(p["aim_id"], p["direction"], p.get("proposed_by_actor_id"))
         elif event.event_type == "ProposalClosed": loop.close_proposal(p["proposal_id"], p["closure_kind"], p["actor_id"], p["reason"])
+        elif event.event_type == "AimCriteriaRevised": loop.revise_aim_criteria(p["aim_id"], p["criteria"], p["superseded_proposal_ids"], p["actor_id"], p["reason"])
         elif event.event_type == "GoalStopped": loop.stop_goal(p["goal_id"], p["actor_id"], p["reason"])
         elif event.event_type == "AimAbandoned": loop.abandon_aim(p["aim_id"], p["actor_id"], p["reason"])
         elif event.event_type == "ProposalSuperseded": loop.revise_proposal(p["previous_proposal_id"], p["direction"], p["actor_id"], p["reason"])

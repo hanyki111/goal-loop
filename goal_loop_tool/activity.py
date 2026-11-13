@@ -25,6 +25,7 @@ _TITLES = {
     "ProposalSuperseded": "Goal Proposal 교체",
     "ProposalAccepted": "Proposal 수락 및 Goal 확정",
     "ProposalClosed": "Goal Proposal 종료",
+    "AimCriteriaRevised": "목표 달성 기준 개정",
     "GoalStopped": "Goal 중단",
     "AimAbandoned": "Aim 포기",
     "AimParentLinked": "하위 목표로 연결",
@@ -121,6 +122,9 @@ def _detail(event_type: str | None, payload: dict[str, object]) -> str:
         return str(payload.get("reason", ""))
     if event_type == "ProposalClosed":
         return f"종료: {payload.get('closure_kind')}; 이유: {payload.get('reason', '')}"
+    if event_type == "AimCriteriaRevised":
+        replaced = ", ".join(payload.get("superseded_proposal_ids") or [])
+        return f"{replaced} → {payload.get('proposal_id')}; 이유: {payload.get('reason', '')}"
     if event_type in {"GoalStopped", "AimAbandoned", "GoalHoldAdded"}:
         return str(payload.get("reason") or "")
     return ", ".join(f"{key}={value}" for key, value in payload.items())

@@ -238,6 +238,17 @@ goal-loop goal-stop goal-3 --actor owner --reason "requirement dropped"
 goal-loop aim-abandon aim-2 --actor owner --reason "out of scope"
 ```
 
+An Aim's achievement criteria are a Proposal closed with `--kind criteria`. To change them later, revise them
+instead of adding a second set (goal-174); the earlier criteria stay readable, marked as replaced, and the app and
+`goal-loop-judge aim` judge against the current criteria only while showing the history:
+
+```powershell
+goal-loop aim-criteria-revise aim-2 "criteria: ..." --supersedes proposal-5 [--supersedes proposal-7] --actor owner --reason "narrowed to commands"
+```
+
+Only an open Aim's criteria can be revised (reopen an achieved Aim with `aim-closure-invalidate` first), and each
+`--supersedes` must be a current criteria Proposal of that Aim. Setting criteria is the user's decision.
+
 A stopped Goal blocks new Attempts and verification, but a running Attempt can still be completed.
 An abandoned Aim blocks new Proposals, acceptance, and Attempts without closing its children.
 `goal-hold-add` now requires `--actor` and `--reason`. A Goal cannot depend on its own ancestor (or take a

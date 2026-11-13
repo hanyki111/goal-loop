@@ -311,12 +311,23 @@ def aim_prompt(projection: dict, aim_id: str, ws: Workspace, *, note: str, rules
     if aim is None:
         raise JudgingError(f"목표를 찾을 수 없습니다: {aim_id}")
     # A Proposal closed as `criteria` carries the Aim's achievement criteria, not an approach.
-    criteria = [item for item in projection["proposals"] if item["aim_id"] == aim_id and item.get("closure_kind") == "criteria"]
-    proposals = [item for item in projection["proposals"] if item["aim_id"] == aim_id and item not in criteria]
+    every_criteria = [item for item in projection["proposals"] if item["aim_id"] == aim_id and item.get("closure_kind") == "criteria"]
+    # Criteria replaced by aim-criteria-revise are history: judged against the current criteria only (goal-174).
+    criteria = [item for item in every_criteria if not item.get("criteria_superseded_by_proposal_id")]
+    replaced = [item for item in every_criteria if item.get("criteria_superseded_by_proposal_id")]
+    proposals = [item for item in projection["proposals"] if item["aim_id"] == aim_id and item not in every_criteria]
+    by_id = {item["id"]: item for item in every_criteria}
     goals = [item for item in projection["goals"] if item["aim_id"] == aim_id]
     children = [item for item in projection["aims"] if item.get("parent_aim_id") == aim_id]
     lines = [f"## 목표 {aim_id}: {aim['description']}", "", "### 달성 기준(이 목표의 기준으로 채택된 접근안)"]
     lines += [f"- {p['id']}:\n" + "\n".join("    " + line for line in p["direction"].splitlines()) for p in criteria] or ["따로 채택된 기준 없음(목표 설명과 접근안에서 판단)"]
+    if replaced:
+        lines += ["", "### 기준 변경 이력(이전 기준은 판단 기준이 아님)"]
+        for p in replaced:
+            successor = by_id.get(p["criteria_superseded_by_proposal_id"], {})
+            lines.append(f"- {p['id']} → {p['criteria_superseded_by_proposal_id']}, 결정자 {successor.get('closed_by_actor_id')}, "
+                         f"이유: {successor.get('closure_reason') or ''}\n  이전 문구:\n"
+                         + "\n".join("    " + line for line in p["direction"].splitlines()))
     lines += ["", "### 접근안"]
     lines += [f"- {p['id']} ({p['status']}, 과제 {p.get('accepted_goal_id')}):\n" + "\n".join("    " + line for line in p["direction"].splitlines()) for p in proposals]
     lines += ["", "### 과제와 검증 판단"]

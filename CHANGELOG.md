@@ -16,10 +16,12 @@
   `--glm-env-ps1`은 GLM 연결(`.goal-loop/judges.json`)을 함께 준비합니다.
   `CLAUDE.md`가 `@AGENTS.md`를 가져오면 `AGENTS.md`에 두 에이전트를 함께 적은 절 하나만 두고, 직접 쓴 Goal Loop 지침이 있는 파일에는 절을 덧붙이지 않고 경고하며,
   예전에 배포한 판 그대로인 스킬 파일은 새 판으로 바꿉니다(배포 판 해시는 `agent_files/released-skill-hashes.json`, `scripts/update_released_skill_hashes.py`로 갱신).
+- 목표 달성 기준 개정(`aim-criteria-revise`): 진행 중인 목표의 기준(criteria로 닫은 접근안)을 새 기준으로 바꾸고, 이전 기준은 지우지 않고 대체되었다고 표시합니다.
+  결정자와 이유를 저널(`AimCriteriaRevised`)에 남기고, `ui-projection` schema 19의 `criteria_superseded_by_proposal_id`와 위임 평가의 '기준 변경 이력'이 현재 기준과 이전 기준을 구분합니다.
 - 사람이 읽는 진행 상태(`overview`): 목표 트리, 과제 상태, 지금 할 일을 한국어 텍스트로 보여 주고, `--aim`, `--all`, `--watch N`을 받습니다.
 - 브라우저 화면(`ui`): 확장이나 Node 없이 앱과 같은 화면을 `127.0.0.1`에서 읽기 전용으로 띄웁니다(화면 번들은 패키지 데이터 `web_files/`, `ui`의 `npm run build:web`으로 생성).
   전역 옵션 `--keep-checkpoint`는 오래된 projection checkpoint를 갱신하지 않고 읽습니다(`overview`와 `ui`가 씀).
-- 읽기 전용 투영: `next`, `status`, `activity`, `reviews`, `admission`, `ui-projection`(schema 16), `memory-draft`.
+- 읽기 전용 투영: `next`, `status`, `activity`, `reviews`, `admission`, `ui-projection`(schema 19), `memory-draft`.
 - 과제 연결: 상위 과제(`goal-parent-add`), 선행 과제(`goal-dependency-add`), 실행을 막지 않고 흐름만 남기는 이어받음(`goal-follow-add`, 목표가 달라도 연결 가능).
 - 위임 판정(`goal-loop-judge`): 실행하지 않은 에이전트(Codex CLI, Claude CLI, Claude CLI로 연결한 다른 모델)가 프로젝트 사본에서 판정하고, 그 답을 그대로 기록합니다.
 - 데스크톱 앱(Tauri, 한국어 화면): 목표 → 접근안 → 과제 그래프와 배치·필터, ID 검색(Ctrl+K), 지금 할 일 안내, 검토함과 실행 대기함, 창이 다시 활성화될 때 기록 다시 읽기.

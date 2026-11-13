@@ -92,7 +92,7 @@ class AimLinkTests(unittest.TestCase):
         self.assertEqual(run(self.umbrella, "ui-projection")["aim_links"], [])
         self.link("--project", str(self.game_root))
         projection = run(self.umbrella, "ui-projection")
-        self.assertEqual(projection["schema_version"], 18)
+        self.assertEqual(projection["schema_version"], 19)
         self.assertEqual(projection["aim_links"], self.links())
 
     def test_achieved_and_abandoned_states_come_from_the_linked_journal(self):

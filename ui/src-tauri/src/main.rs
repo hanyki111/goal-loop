@@ -6,7 +6,7 @@ const UI_COMMANDS: &[&str] = &[
     "retry-decide", "reverification-decide", "aim-evaluate", "contract-revise",
     "verdict-review-resolve", "aim-evaluation-review-resolve", "aim-closure-invalidate",
     "aim-pause", "aim-resume", "goal-hold-add", "goal-hold-clear", "goal-parent-add", "goal-follow-add",
-    "goal-dependency-add", "proposal-close", "goal-stop", "aim-abandon",
+    "goal-dependency-add", "proposal-close", "goal-stop", "aim-abandon", "aim-criteria-revise",
     "reference-add", "reference-remove", "aim-parent-add", "aim-link-import",
 ];
 

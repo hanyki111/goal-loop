@@ -30,7 +30,7 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
                  "status": attachment_status(artifacts_dir, item.name, item.sha256)} for item in evidence.attachments]
 
     projection = {
-        "schema_version": 18,
+        "schema_version": 19,
         # v15: memory_drafts, timeline lines to suggest for Verdicts and Aim Evaluations the timeline does not cite yet.
         # v14: Memory Tool timeline entries citing record IDs, and excerpts of referenced .memory documents (read-only; empty without .memory).
         # v13: AO Goals linked to Goals, summarized from the AO snapshots attached to their Evidence (read-only).
@@ -98,6 +98,8 @@ def goal_graph_projection(loop: PersistentGoalLoop, *, project_root: Path | None
              # v9: proposer and closure facts (None for records made before they were captured).
              "proposed_by_actor_id": proposal.proposed_by_actor_id, "closure_kind": proposal.closure_kind,
              "closed_by_actor_id": proposal.closed_by_actor_id, "closure_reason": proposal.closure_reason,
+             # v19: criteria replaced by aim-criteria-revise point at the criteria that replaced them.
+             "criteria_superseded_by_proposal_id": proposal.criteria_superseded_by_proposal_id,
              "references": references("proposal", proposal.id)}
             for proposal in loop.proposals.values()
         ],

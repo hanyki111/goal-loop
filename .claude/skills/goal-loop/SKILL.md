@@ -139,7 +139,7 @@ before starting work.
 | `aim-create`, `goal-accept` (fixes the Contract) | | ✓ | |
 | `attempt-start`, `attempt-complete`, `evidence-record`, `ao-import`, `verification-begin` on an accepted Goal the user asked you to work on | ✓ | | |
 | `goal-follow-add` (history only, cites the reason) | ✓ | | |
-| `retry-decide`, `reverification-decide`, `contract-revise`, goal tree links | | ✓ | |
+| `retry-decide`, `reverification-decide`, `contract-revise`, `aim-criteria-revise`, goal tree links | | ✓ | |
 | `verdict-submit`, `aim-evaluate` | | delegated judging only (below) | ✓ |
 | review resolutions, closures, pause/hold | | | ✓ |
 
@@ -163,7 +163,10 @@ you start a change, say which level you chose; the user may change it.
 
 - Aim: an outcome the user stated. Write what will count as achieved in a Proposal on that Aim and close
   it with `proposal-close --kind criteria`: it leaves the open approaches, the app shows it as the Aim's
-  criteria, and `delegated_judging aim` gives it to the judge as the criteria. When a direction is too large to write a Contract for, split it into sub-Aims
+  criteria, and `delegated_judging aim` gives it to the judge as the criteria. When the user changes what
+  counts as achieved, record it with `aim-criteria-revise <aim> "<new criteria>" --supersedes <criteria proposal>
+  --actor <agent> --reason "<the user's decision>"` (with the user's approval) instead of closing a second criteria
+  Proposal: the earlier criteria stay as history and only the new ones are judged. When a direction is too large to write a Contract for, split it into sub-Aims
   (`aim-create --parent`, or `aim-parent-add` once for an existing Aim); when the work can be written
   as a Contract, accept a Goal and split it with the Goal tree instead. A parent Aim is evaluated on
   its own, citing its sub-Aims' evaluations; it is never achieved automatically.
@@ -242,7 +245,9 @@ an accepted approach routes changes to Contract revision or a new Proposal. Afte
 records a retry as a retry Decision followed by a new Attempt, exactly as the CLI does. Evidence
 cited by a Verdict can be corrected from the UI, which opens the same Impact Review flow; 검토함
 shows it, and 실행 대기함 shows only Runtime outbox delivery state. Hiding records is a local display
-preference, not a journal fact. `ui-projection` is schema version 18 (v18 adds `aim_links`: each Aim link with the linked Aim's state as
+preference, not a journal fact. `ui-projection` is schema version 19 (v19 adds `criteria_superseded_by_proposal_id` on
+Proposals: criteria replaced by `aim-criteria-revise` point at the criteria that replaced them, and the app and
+`goal-loop-judge aim` judge against the current criteria only; v18 adds `aim_links`: each Aim link with the linked Aim's state as
 `aim-links` reports it, shown in the app's Aim detail "연결된 목표" with a button that opens the linked project, and as a
 link summary on graph Aim cards; v17 adds `external_evaluations`: evaluations imported from linked Aims of other
 journals with `aim-link-import`, citable by `aim-evaluate` as `external-evaluation-*`, and `external_evaluation_ids` on Aim

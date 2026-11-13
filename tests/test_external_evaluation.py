@@ -87,7 +87,7 @@ class ExternalEvaluationTests(unittest.TestCase):
         self.assertTrue(replayed.is_currently_achieved(self.side["id"]))
         self.assertEqual(replayed.external_evaluations[imported["id"]].external_evaluation_id, evaluation["id"])
         projection = run(self.umbrella, "ui-projection")
-        self.assertEqual(projection["schema_version"], 18)
+        self.assertEqual(projection["schema_version"], 19)
         self.assertEqual([item["id"] for item in projection["external_evaluations"]], [imported["id"]])
         self.assertEqual(projection["aim_evaluations"][0]["external_evaluation_ids"], [imported["id"]])
         output = StringIO()

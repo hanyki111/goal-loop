@@ -57,6 +57,13 @@ _COMMAND_HELP = {
         "검토 중인 Proposal을 Goal로 확정하지 않고 닫습니다. declined(채택 안 함), withdrawn(철회), criteria(Aim의 달성 기준으로 채택) 중 하나와 이유를 남기며, 다시 열지 않습니다. criteria로 닫은 Proposal은 그 Aim의 달성 기준으로 계속 보입니다.",
         'proposal-close proposal-2 --kind declined --actor owner --reason "proposal-1을 선택함"',
     ),
+    "aim-criteria-revise": (
+        "진행 중인 Aim의 달성 기준을 새 기준으로 바꿉니다. 새 기준은 곧바로 criteria로 닫힌 Proposal이 되고, --supersedes로 준 이전 기준(criteria로 닫힌 Proposal)은 "
+        "지우지 않고 새 기준으로 대체되었다고 표시합니다. 결정자와 이유를 남기며, 이전 기준은 화면과 위임 평가에 '이전 기준'으로 따로 나옵니다. "
+        "기준을 정하는 것은 사용자의 결정이므로, 에이전트는 사용자의 승인을 받고 이유에 그 사실을 적습니다. 달성되었거나 그만둔 Aim의 기준은 바꿀 수 없습니다"
+        "(달성된 Aim은 먼저 aim-closure-invalidate로 다시 엽니다). 처음 기준을 정할 때는 proposal-close --kind criteria를 씁니다.",
+        'aim-criteria-revise aim-2 "달성 기준: …" --supersedes proposal-5 --actor owner --reason "범위를 명령 감지로 좁힘"',
+    ),
     "goal-stop": (
         "Goal을 더 이상 추진하지 않기로 하고 중단합니다. 새 Attempt와 검증이 막히며, 이미 실행 중인 Attempt의 결과는 계속 기록할 수 있습니다.",
         'goal-stop goal-3 --actor owner --reason "요구가 바뀌어 더 이상 필요 없음"',
@@ -1624,6 +1631,11 @@ def build_parser() -> argparse.ArgumentParser:
     close_proposal = sub.add_parser("proposal-close", help="Close an open Proposal without accepting it")
     close_proposal.add_argument("proposal_id"); close_proposal.add_argument("--kind", required=True, choices=list(PROPOSAL_CLOSURE_KINDS))
     close_proposal.add_argument("--actor", required=True); close_proposal.add_argument("--reason", required=True)
+    revise_criteria = sub.add_parser("aim-criteria-revise", help="Replace an open Aim's achievement criteria, keeping the earlier ones as replaced")
+    revise_criteria.add_argument("aim_id"); revise_criteria.add_argument("criteria")
+    revise_criteria.add_argument("--supersedes", action="append", required=True, metavar="PROPOSAL_ID",
+                                 help="criteria Proposal of this Aim that the new criteria replace (repeat for several)")
+    revise_criteria.add_argument("--actor", required=True); revise_criteria.add_argument("--reason", required=True)
     stop_goal = sub.add_parser("goal-stop", help="Stop pursuing a Goal")
     stop_goal.add_argument("goal_id"); stop_goal.add_argument("--actor", required=True); stop_goal.add_argument("--reason", required=True)
     abandon_aim = sub.add_parser("aim-abandon", help="Give up an open Aim")
@@ -1861,6 +1873,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "aim-parent-add": _emit(loop.link_aim_parent(args.child_aim_id, args.parent_aim_id).__dict__); return
     if args.command == "proposal-create": _emit(loop.create_proposal(args.aim_id, args.direction, args.actor).__dict__); return
     if args.command == "proposal-close": _emit(loop.close_proposal(args.proposal_id, args.kind, args.actor, args.reason).__dict__); return
+    if args.command == "aim-criteria-revise": _emit(loop.revise_aim_criteria(args.aim_id, args.criteria, args.supersedes, args.actor, args.reason).__dict__); return
     if args.command == "goal-stop": goal = loop.stop_goal(args.goal_id, args.actor, args.reason); _emit({"id": goal.id, "phase": goal.phase.value, "stopped_by_actor_id": goal.stopped_by_actor_id, "stop_reason": goal.stop_reason}); return
     if args.command == "aim-abandon": _emit(loop.abandon_aim(args.aim_id, args.actor, args.reason).__dict__); return
     if args.command == "proposal-revise": _emit(loop.revise_proposal(args.proposal_id, args.direction, args.actor, args.reason).__dict__); return

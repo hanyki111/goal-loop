@@ -123,6 +123,8 @@ class GoalProposal:
     closure_kind: str | None = None
     closed_by_actor_id: str | None = None
     closure_reason: str | None = None
+    # A criteria Proposal replaced by aim-criteria-revise points at the criteria that replaced it (goal-174).
+    criteria_superseded_by_proposal_id: str | None = None
 
 
 @dataclass(frozen=True)
